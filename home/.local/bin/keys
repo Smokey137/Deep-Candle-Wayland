@@ -20,7 +20,5 @@ awk '
     printf "%-26s %s\n", combo, words
     words = ""
   }' "$CFG" |
-  rofi -dmenu -i -no-custom -p keys -theme "$HOME/.config/rofi/warm.rasi" \
-       -m "$("$HOME/.local/bin/screen-main")" \
-       -theme-str 'window { width: 760px; } listview { lines: 16; }' >/dev/null
+  fuzzel --dmenu --no-sort --width 76 --lines 16 --prompt 'keys ' >/dev/null
 exit 0

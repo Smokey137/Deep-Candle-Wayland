@@ -1,7 +1,5 @@
 #!/bin/sh
-# hours: the clock's popup on the bar (a right-click on the time): today's planetary hours,
-# the Sun, the Moon, the decan and the season, from planhour. Part of the planetary-hours kit
-# (planhour, hours).
+# hours: the hour's planet on the bar, from planhour (the planetary-hours kit: planhour, hours).
 #   hours bar   the hour's planet beside the clock (polybar, tail = true): its glyph in the bar's
 #               amethyst, the next one the moment the hour turns (planhour -b says when); a look
 #               at the clock every minute in between, so a suspend over the turn costs a minute
@@ -19,27 +17,7 @@ if [ "${1:-}" = bar ]; then
     done
   done
 fi
-ROFI="-theme $HOME/.config/rofi/warm.rasi -m $("$HOME/.local/bin/screen-main") -location 2 -yoffset 24"          # where and how the calendar opens, so both popups sit in one place
-if ! PANEL=$("$HOME/.local/bin/planhour" -p 2>/dev/null); then      # (its words only when it fails)
-  PANEL="planhour failed: $("$HOME/.local/bin/planhour" -p 2>&1 >/dev/null | sed 's/&/\&amp;/g; s/</\&lt;/g')"
-fi
-# Each line a row of a list, all shown, none marked: rofi -e makes its box lines x the font's
-# height and lets the text run past it, so with some fonts the last lines were cut off; a row
-# is that height exactly. No input field, so typing does nothing; Escape or a click outside
-# closes it. The 18px margin is the calendar's (its error-message and textbox padding).
-N=$(printf '%s\n' "$PANEL" | wc -l)
-# As wide as the longest line (78 columns as a rule; a character a column, tags out, an entity one
-# character), one column spare, and the edges: the 18px margin a side, and the theme's padding and
-# border (14px and 1px in warm.rasi). (A line wider than its row would end in "...".)
-COLS=$(printf '%s\n' "$PANEL" | LC_ALL=C awk '{ gsub(/<[^>]*>/, ""); gsub(/&[a-z]+;/, "x"); n = length($0); n -= gsub(/[\200-\277]/, ""); if (n > w) w = n } END { print (w > 78 ? w : 78) + 1 }')
-PLAIN='background-color: transparent; text-color: inherit;'
-# The glass a little thicker than the theme's (94%, as the file manager and the chats have it):
-# this much small text over a busy page behind it was hard to read
-# shellcheck disable=SC2086
-printf '%s\n' "$PANEL" | rofi -dmenu -markup-rows -no-show-icons $ROFI -theme-str "
-window { width: calc( ${COLS}ch + 66px ); children: [ mainbox ]; background-color: $("$HOME/.local/bin/palette" POPUP '#140C10')F0; }
-mainbox { children: [ listview ]; padding: 18px; spacing: 0; }
-listview { lines: $N; columns: 1; fixed-height: true; scrollbar: false; spacing: 0; padding: 0; border: 0; }
-element { padding: 0; border: 0; border-radius: 0; children: [ element-text ]; }
-element normal.normal, element alternate.normal, element selected.normal { $PLAIN }
-element-text { $PLAIN padding: 0; horizontal-align: 0; }" >/dev/null
+# The popup (today's hours in a rofi panel) is Deep Candle's, on X: fuzzel can't show a
+# panel of text. Here only the bar's planet is left.
+echo "hours: only 'hours bar' here; the full hours: planhour -p" >&2
+exit 1

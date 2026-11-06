@@ -1,11 +1,9 @@
 #!/bin/sh
-# ob-colorpicker (rhine / Wayland): pick a colour off the screen (Super+P). The X one uses xcolor
-# and xclip; here slurp picks the point, grim reads that one pixel, wl-copy puts #RRGGBB on the
-# clipboard, and a notice shows it, as before.
+# ob-colorpicker (rhine / Wayland): pick a colour off the screen (Super+P): slurp picks the
+# point, grim reads that one pixel (as PPM: its last 3 bytes are red, green, blue), wl-copy
+# puts #RRGGBB on the clipboard. A notice says it, when a notification daemon is there.
 pt=$(slurp -p -b 00000000) || exit 0
-color=$(grim -g "$pt" -t ppm - | magick - -format '#%[hex:p{0,0}]' info:- 2>/dev/null | cut -c1-7)
-[ -n "$color" ] || exit 1
-printf '%s' "$color" | wl-copy
-image="${XDG_RUNTIME_DIR:-/tmp}/colorpicker.png"
-magick -size 48x48 "xc:$color" "$image"
-dunstify -u low -h string:x-dunst-stack-tag:obcolorpicker -i "$image" "$color, copied to clipboard."
+color=$(grim -g "$pt" -t ppm - | tail -c 3 | od -An -tx1 | tr -d ' \n' | tr 'a-f' 'A-F')
+[ ${#color} = 6 ] || exit 1
+printf '#%s' "$color" | wl-copy
+"$(dirname "$0")/osd" colour colour Colour "#$color, copied to clipboard."

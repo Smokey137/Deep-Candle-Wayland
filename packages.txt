@@ -1,57 +1,45 @@
-# What Deep Candle Wayland needs: only what its configs and scripts run. Arch and Artix use
-# the same names. rhine is not packaged: README, "Install".
+# What Deep Candle Wayland needs: the window manager, the bar, the launcher, the wallpaper, and
+# what their scripts run. No apps. Arch and Artix use the same names. rhine is not packaged:
+# README, "Install".
 #   sudo pacman -S --needed $(awk '/^\[/{s=$0;next} /^[a-z]/ && s=="[pacman]"' packages.txt)
 # [optional] is NOT installed by that line: add a piece only if you want what it gives.
 # One name per line; a comment on its own line.
 
 [pacman]
-# the session: the login shell (~/.zprofile is zsh's), the compositor, zig to build rhine,
-# D-Bus (dbus-run-session), seat and admin rights
-zsh
-git
+# the window manager: river (the compositor; it brings Xwayland), git and zig to build rhine,
+# D-Bus for the session (dbus-run-session), polkit for the seat
 river
+git
 zig
 dbus
 polkit
-# the bar and the wallpaper
+# the bar, the launcher and its menus, the wallpaper
 waybar
+fuzzel
 swaybg
-# the look: GTK's theme names on Wayland; DejaVu for the planets' glyphs (the theme's own fonts
-# are in fonts/)
-dconf
+# the planets' glyphs on the bar (the bar's own fonts are in fonts/)
 ttf-dejavu
-# terminal, menus, notices
-kitty
-rofi
-dunst
-# sound: the bar's sound pieces and the volume keys talk to it through pactl
+# the bar's sound and music pieces, and the volume and media keys (pactl, playerctl)
 pipewire
 pipewire-pulse
 wireplumber
 libpulse
-# the bar's music piece and the media keys
 playerctl
-# weather (curl), window screenshots (jq), colour picker and wallpaper thumbnails (imagemagick)
+# the bar's weather (curl); window screenshots (jq)
 curl
 jq
-imagemagick
-# screenshots, the colour picker, the clipboard
+# the screenshot and colour-picker keys
 grim
 slurp
 wl-clipboard
 
 [optional]
-# the bar's network piece and the Wi-Fi menu (nmcli). Without it that piece says offline.
+# the bar's network piece and its Wi-Fi menu (nmcli). Without it that piece says offline.
 networkmanager
 iw
 # mpd as a music source for the bar (playerctl covers browsers, mpv and the like)
 mpc
-# Qt apps native on Wayland, in the Deep Candle colours
-qt5-wayland
-qt6-wayland
-qt5ct
-qt6ct
-# apps' saved passwords (rhine's config doesn't start it: add it to "startup" if you want it)
-gnome-keyring
+# notices for volume, brightness, screenshots (any notification daemon that dunstify can reach)
+dunst
 # marking a screenshot up (Arch only; Artix: build it, github.com/jtheoof/swappy)
 swappy

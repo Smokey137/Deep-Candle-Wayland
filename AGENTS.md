@@ -1,19 +1,20 @@
 # Deep Candle Wayland — notes for AI agents
 
-The owner's desktop, Deep Candle, on Wayland: river + rhine instead of X + bspwm, waybar
-instead of polybar. It stands alone. It was copied on 2026-11-06 from Deep Candle
-(github.com/Smokey137/Deep-Candle, a separate private repo, X only): the theme, fonts,
-wallpaper, shell and scripts, without single apps' settings. `README.md` explains every part.
+The desktop part of the owner's Deep Candle (github.com/Smokey137/Deep-Candle, a separate
+private repo, X only), on Wayland. `README.md` explains every part.
 
-- `home/` maps to `~`; `fonts/`, `wallpaper/`, `dconf/` as `./install` says. `./install` keeps
-  `.bak-` files and has `--dry-run`.
-- The shared files are copies of Deep Candle's. A fix to a shared script may belong in both repos:
-  say so to the owner.
-- Single apps' settings (Brave, qBittorrent, calibre, Geany, mpd, ...) stay out of this repo:
-  the owner chose that.
-- The bar scripts print polybar's tags; `home/.local/bin/bar-markup` turns them into waybar's.
-  Keep using it rather than rewriting the scripts. `~/.config/polybar-mine/colors.ini` stays
-  under that name: `palette` and the scripts read it.
+- **Scope, set by the owner: only four things.** The window manager and its keys (rhine on
+  river), the bar (waybar), the launcher and menus (fuzzel), the wallpaper (swaybg). Plus the
+  fonts and scripts those four need. **No apps and no app settings**: no terminal, shell, GTK or
+  Qt theme, notification daemon, file manager, editor ... Never add them, nor packages for them
+  outside `packages.txt`'s `[optional]`. Ask before adding anything outside the four.
+- `home/` maps to `~`; `fonts/`, `wallpaper/` as `./install` says. `./install` keeps `.bak-`
+  files and has `--dry-run`.
+- The bar scripts are copies of Deep Candle's. They print polybar's tags;
+  `home/.local/bin/bar-markup` turns them into waybar's. Keep using it rather than rewriting the
+  scripts. `~/.config/polybar-mine/colors.ini` keeps that name: `palette` and the scripts read it.
+  A fix to a shared script may belong in Deep Candle too: say so to the owner.
+- Menus are fuzzel's (`--dmenu`), never rofi's. fuzzel does lists only, no text panels.
 - rhine reads `home/.config/river/config.rh`. A `#` anywhere on a line starts a comment, so no
   `#` inside a command. A `*` in a rule matches one or more letters, never none.
 - **Privacy**: no home city, hostname, Wi-Fi names, e-mail addresses. The weather city is the

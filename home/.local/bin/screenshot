@@ -23,9 +23,8 @@ shot() {
 MODE=${1#--}
 if [ -z "$MODE" ]; then
   MODE=$(printf 'area\nwindow\ndesktop\ndelay 5s\n' | \
-    rofi -dmenu -p shot -i -theme "$HOME/.config/rofi/warm.rasi" -m "$("$HOME/.local/bin/screen-main")" \
-         -theme-str 'window { width: 280px; } listview { lines: 4; }')
-  sleep 0.3                           # rofi gone from the screen first
+    fuzzel --dmenu --width 20 --lines 4 --prompt 'shot ')
+  sleep 0.3                           # the menu gone from the screen first
 fi
 
 case "$MODE" in

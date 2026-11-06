@@ -3,6 +3,7 @@
 // The script modules run the same scripts polybar runs, through ~/.local/bin/bar-markup, which
 // turns polybar's colour tags into waybar's. ~/.local/bin/bar starts this bar (again).
 // Colours: style.css, from polybar-mine/colors.ini. Icons: polybar's own (Iosevka Nerd Font).
+// Menus a click opens (sound, Wi-Fi, power) are fuzzel's (~/.config/fuzzel/fuzzel.ini).
 {
   "layer": "top",
   "position": "top",
@@ -15,7 +16,7 @@
 
   "group/desktops": { "orientation": "horizontal", "modules": ["hyprland/workspaces"] },
   "group/system":   { "orientation": "horizontal", "modules": ["cpu", "temperature", "custom/ram", "custom/disk", "custom/netspeed"] },
-  "group/time":     { "orientation": "horizontal", "modules": ["clock#date", "clock#time", "custom/planet", "custom/weather", "custom/notes"] },
+  "group/time":     { "orientation": "horizontal", "modules": ["clock#date", "clock#time", "custom/planet", "custom/weather"] },
   "group/music":    { "orientation": "horizontal", "modules": ["custom/music"] },
   "group/controls": { "orientation": "horizontal", "modules": ["custom/volume", "custom/mic", "backlight", "custom/network", "battery"] },
   "group/power":    { "orientation": "horizontal", "modules": ["custom/power"] },
@@ -58,42 +59,28 @@
     "tooltip": false
   },
 
-  // polybar's date module was one piece with two clicks; here it's two: the date and the time.
-  // Left click: the calendar; right click on the time: the hours
+  // the date and the time. Their popups (calendar, the hours, the forecast) were rofi text
+  // panels on X; fuzzel only does menus, so these only show
   "clock#date": {
     "interval": 60,
     "format": "{:%a %d %b}",
-    "on-click": "~/.local/bin/calendar",
-    "on-click-right": "~/.local/bin/calendar",
     "tooltip": false
   },
   "clock#time": {
     "interval": 1,
     "format": "{:%H:%M}",
-    "on-click": "~/.local/bin/calendar",
-    "on-click-right": "~/.local/bin/hours",
     "tooltip": false
   },
   "custom/planet": {
     "exec": "~/.local/bin/hours bar | ~/.local/bin/bar-markup",
-    "on-click": "~/.local/bin/hours",
-    "on-click-right": "~/.local/bin/hours",
     "tooltip": false
   },
+  // right click: fetch the weather again now
   "custom/weather": {
     "exec": "~/.local/bin/weather bar | ~/.local/bin/bar-markup",
-    "on-click": "~/.local/bin/weather forecast",
     "on-click-right": "~/.local/bin/weather update",
     "tooltip": false
   },
-  // the notes window is an X program (not ported): a click adds a line instead
-  "custom/notes": {
-    "format": "<span font_family='Iosevka Nerd Font' size='12288' foreground='#9B59D0'></span>",
-    "on-click": "~/.local/bin/notes add",
-    "on-click-right": "~/.local/bin/notes add",
-    "tooltip": false
-  },
-
   // the music card is an X program (not ported): a click plays or pauses, the wheel skips
   "custom/music": {
     "exec": "~/.local/bin/music | ~/.local/bin/bar-markup",

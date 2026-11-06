@@ -4,6 +4,8 @@
 # title, a line of text, and a bar when there is a LEVEL (0-100). It replaces the last
 # notice with the same TAG instead of stacking, shows for MS milliseconds (default 1500),
 # and dunst keeps it out of the history (~/.config/dunst/dunstrc.d/90-osd.conf).
+# No dunst (or no notification daemon at all): no notice, and no error either.
+command -v dunstify >/dev/null || exit 0
 ICONS=${XDG_DATA_HOME:-$HOME/.local/share}/deep-candle/osd
 ms=1500
 if [ "$1" = -t ]; then ms=$2; shift 2; fi

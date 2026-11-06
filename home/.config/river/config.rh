@@ -48,9 +48,9 @@ animations {
     }
 }
 
-## The cursor: Qogirr, as ~/.icons/default/index.theme names it
+## The cursor: the system's default theme (Deep Candle's Qogirr is not part of this repo)
 xcursor {
-    theme Qogirr
+    theme default
     size 24
 }
 
@@ -77,14 +77,11 @@ windowrules [
     appid, *enity, float, true
     appid, *iewnior, float, true
     appid, feh, float, true
-    appid, Music, float, true
-    appid, Music, size, 0.6, 0.55
-    appid, Music, position, 0.2, 0.2
 ]
 
 keybinds [
     ## Menus
-    #: app launcher
+    #: app launcher (fuzzel)
     super, space, launch, ~/.local/bin/launcher
     #: app launcher
     alt, F1, launch, ~/.local/bin/launcher
@@ -204,7 +201,7 @@ keybinds [
 
     ## Session
     #: a fresh bar (waybar)
-    super+shift, r, launch, ~/.local/bin/bar; dunstify -u low -h string:x-dunst-stack-tag:obaction "Bar restarted"
+    super+shift, r, launch, ~/.local/bin/bar
 
     ## Screenshots, brightness, volume, music
     #: screenshot: pick an area
@@ -242,33 +239,13 @@ keybinds [
     #: music: play / pause
     super, d, launch, ~/.local/bin/music toggle
 
-    ## Applications
-    #: terminal (kitty)
-    super, Return, launch, kitty
-    #: terminal (kitty)
-    ctrl+alt, t, launch, kitty
-    #: files (pcmanfm-qt)
-    super, f, launch, pcmanfm-qt
-    #: browser (Brave)
-    super, w, launch, brave
-    #: editor (Geany)
-    super, e, launch, geany
-    #: vim
-    ctrl+alt, v, launch, kitty vim
-    #: ranger (files, in the terminal)
-    ctrl+alt, r, launch, kitty ranger
-    #: btop (what's running)
-    ctrl+alt, h, launch, kitty btop
-    #: big fullscreen terminal
-    super, t, launch, ~/.local/bin/ob-furminal
+    ## Terminal and tools (apps: add your own keys here, "launch, <command>")
+    #: terminal ($TERMINAL: rhine-session sets it, foot unless you set another)
+    super, Return, launch, $TERMINAL
+    #: terminal
+    ctrl+alt, t, launch, $TERMINAL
     #: colour picker
     super, p, launch, ~/.local/bin/ob-colorpicker
-    #: music player (ncmpcpp)
-    ctrl+alt, m, launch, kitty --class Music ncmpcpp
-    #: notes: add a line
-    super+alt+shift, n, launch, ~/.local/bin/notes add
-    #: change the wallpaper
-    super+alt, w, launch, ~/.local/bin/wallpaper
 ]
 
 ## The mouse, as in bspwm: Alt+drag moves a window, Alt+right-drag resizes it
@@ -277,12 +254,10 @@ pointer_binds [
     alt, Right, pointerOp, resize
 ]
 
-## Started with the session, stopped when it ends: only what the desktop itself needs. Each
-## line is run by sh. Add apps here if you want them at login (bspwm started mpd, pcmanfm-qt
-## --daemon-mode, keepassxc, gnome-keyring and xfce-polkit here).
+## Started with the session, stopped when it ends: only the desktop itself (the wallpaper, the
+## bar). Each line is run by sh. Add apps here if you want them at login.
 startup [
     dbus-update-activation-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE HYPRLAND_INSTANCE_SIGNATURE
     swaybg -m fill -i "$HOME/.wallpaper"
-    dunst
     ~/.local/bin/bar
 ]

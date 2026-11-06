@@ -1,2 +1,0 @@
-#!/bin/sh
-exec kitty --class Fullscreen --start-as fullscreen -o window_padding_width=34 -o font_size=14

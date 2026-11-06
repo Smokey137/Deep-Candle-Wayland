@@ -1,3 +1,4 @@
 #!/bin/sh
-rofi -show drun -theme "$HOME/.config/rofi/warm.rasi" -m "$("$HOME/.local/bin/screen-main")" \
-  -theme-str 'window { width: 520px; } listview { lines: 12; }'
+# launcher: the app launcher (Super+Space, Alt+F1), fuzzel in place of rofi. Its look:
+# ~/.config/fuzzel/fuzzel.ini.
+exec fuzzel

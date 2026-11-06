@@ -4,10 +4,11 @@
      BACKGROUND #0D0809   the bar            PILL #26171F       the pills
      FOREGROUND #DCC8AE   text               ALTFOREGROUND #8A7470   dim text
      ACCENT #C50ED2       the workspace you are on (with ALTWHITE #FFF2E6 on it)
-     YELLOW #F7B922       the date and time  BLUE #9B59D0       icons      RED #F24732   alarms */
+     YELLOW #F7B922       the date and time  BLUE #9B59D0       icons      RED #F24732   alarms
+   Text: Mass Driver IO (fonts/mass-driver), Deep Candle's "monospace". Icons: Iosevka Nerd Font. */
 
 * {
-    font-family: monospace, "Iosevka Nerd Font", "DejaVu Sans Mono";
+    font-family: "MD IO Trial", "Iosevka Nerd Font", "DejaVu Sans Mono", monospace;
     font-size: 13px;
     min-height: 0;
     border: none;
@@ -38,7 +39,7 @@ tooltip label { color: #DCC8AE; }
 
 /* every piece inside a pill */
 #cpu, #temperature, #custom-ram, #custom-disk, #custom-netspeed,
-#clock, #custom-planet, #custom-weather, #custom-notes,
+#clock, #custom-planet, #custom-weather,
 #custom-music,
 #custom-volume, #custom-mic, #backlight, #custom-network, #battery,
 #custom-power {

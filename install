@@ -4,11 +4,10 @@
 #   ./install             everything below; a file it changes is kept first as <file>.bak-YYYYMMDD
 #   ./install --dry-run   only show what would change
 #
-#   home/        -> ~                                   the desktop, its look, its scripts
+#   home/        -> ~                                   rhine, the bar, the launcher, their scripts
 #   fonts/       -> ~/.local/share/fonts/deep-candle/   (fonts/mass-driver/ -> .../mass-driver/)
 #   wallpaper/   -> ~/Pictures/Wallpapers/              and ~/.wallpaper points to it
-#   dconf/       -> GTK's theme names (needs a D-Bus bus: run it as  dbus-run-session ./install)
-# It does not install programs (packages.txt) and never touches /etc: for that it prints what to do.
+# It does not install programs (packages.txt) and never uses sudo: what needs it, it prints.
 set -euo pipefail
 repo=$(cd "$(dirname "$0")" && pwd)
 cd "$repo"
@@ -59,27 +58,13 @@ for f in wallpaper/*; do
   fi
 done
 
-echo "== dconf: GTK's theme, icons, cursor and font names (what GTK reads on Wayland)"
-if [ "$dry" = 1 ]; then
-  echo "  would load dconf/desktop-interface.ini"
-elif ! command -v dconf >/dev/null; then
-  echo "  dconf isn't installed: sudo pacman -S dconf, then run ./install again"
-elif [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
-  echo "  no D-Bus bus here (SSH?): run it as  dbus-run-session ./install"
-else
-  dconf load /org/gnome/desktop/interface/ < dconf/desktop-interface.ini && echo "  loaded"
-fi
-
 if [ "$dry" = 1 ]; then echo; echo "$changed file(s) would change. Nothing was changed."; exit 0; fi
 cat <<EOF
 
 Done ($changed file(s) changed; old ones kept as *.bak-$stamp).
 
 By hand, once:
-  zsh      chsh -s /bin/zsh          (~/.zprofile starts the session; it is zsh's file)
-           the prompt needs oh-my-zsh in ~/.oh-my-zsh (README: "Install", step 3)
   rhine    built and in /usr/local/bin (README: "Install")
-  /etc     Qt colours: sudo cp system/etc/environment /etc/environment
   video    brightness keys: sudo usermod -aG video ${USER:-$(id -un)}
 Then log out, and log in on tty1: rhine-session starts river with rhine.
 EOF

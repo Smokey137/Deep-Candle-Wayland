@@ -14,8 +14,9 @@ export QT_QPA_PLATFORM='wayland;xcb'
 export SDL_VIDEODRIVER='wayland,x11'
 export ELECTRON_OZONE_PLATFORM_HINT=auto
 export _JAVA_AWT_WM_NONREPARENTING=1        # Java windows stay grey without it
-export ADW_DEBUG_COLOR_SCHEME=prefer-dark   # libadwaita apps (Dino): dark, without a settings portal
-export XCURSOR_THEME=Qogirr XCURSOR_SIZE=24
+export XCURSOR_SIZE=24
+# the terminal Super+Return opens: yours if you set TERMINAL before, else foot
+export TERMINAL="${TERMINAL:-foot}"
 export PATH="$HOME/.local/bin:$PATH"
 
 mkdir -p "$HOME/.local/share/river"
