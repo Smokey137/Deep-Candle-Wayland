@@ -65,8 +65,8 @@ take its place; river stays.
    dbus-run-session river -c rhine        → ~/.local/share/river/session.log
    ▼
  rhine reads ~/.config/river/config.rh, then runs its "startup" lines:
-   dbus-update-activation-environment, gnome-keyring, swaybg (the wallpaper),
-   xfce-polkit, dunst, ~/.local/bin/bar (waybar), mpd, pcmanfm-qt, keepassxc
+   dbus-update-activation-environment, swaybg (the wallpaper), dunst,
+   ~/.local/bin/bar (waybar). Nothing else: add your apps there if you want them.
 ```
 
 Log out (power menu → logout, or Ctrl+Alt+Delete): rhine ends, river ends, you are back at
@@ -77,9 +77,8 @@ Log out (power menu → logout, or Ctrl+Alt+Delete): rhine ends, river ends, you
 
 ## Install (on a fresh Artix)
 
-1. Programs: `packages.txt` says how (`[pacman]`, then `[aur]`). On Artix, NetworkManager also
-   needs `networkmanager-runit`, linked into `/etc/runit/runsvdir/default` (and no iwd or
-   dhcpcd service beside it).
+1. Programs: `packages.txt`, section `[pacman]`: only what the configs and scripts run.
+   `[optional]` lists the extras (network piece, Qt apps, mpd, ...); none is needed to start.
 2. Build rhine (it is not packaged). As yourself, not root:
    ```
    git clone https://codeberg.org/Sivecano/rhine.git

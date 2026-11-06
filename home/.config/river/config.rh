@@ -277,16 +277,12 @@ pointer_binds [
     alt, Right, pointerOp, resize
 ]
 
-## Started with the session, stopped when it ends (bspwmrc lines 73-100, the parts that work
-## on Wayland). Each line is run by sh.
+## Started with the session, stopped when it ends: only what the desktop itself needs. Each
+## line is run by sh. Add apps here if you want them at login (bspwm started mpd, pcmanfm-qt
+## --daemon-mode, keepassxc, gnome-keyring and xfce-polkit here).
 startup [
     dbus-update-activation-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE HYPRLAND_INSTANCE_SIGNATURE
-    gnome-keyring-daemon --start --foreground --components=secrets
     swaybg -m fill -i "$HOME/.wallpaper"
-    /usr/lib/xfce-polkit/xfce-polkit
     dunst
     ~/.local/bin/bar
-    pgrep -x mpd >/dev/null || mpd
-    pcmanfm-qt --daemon-mode
-    keepassxc
 ]
