@@ -19,12 +19,12 @@ fuzzel
 swaybg
 # the planets' glyphs on the bar (the bar's own fonts are in fonts/)
 ttf-dejavu
-# the bar's sound and music pieces, and the volume and media keys (pactl, playerctl)
+# the bar's sound pieces and the volume keys: PipeWire, its session manager, its PulseAudio
+# side, and pactl (libpulse). ~/.local/bin/sound-server starts them (no systemd here)
 pipewire
 pipewire-pulse
 wireplumber
 libpulse
-playerctl
 # the bar's weather (curl); window screenshots (jq)
 curl
 jq
@@ -34,6 +34,8 @@ slurp
 wl-clipboard
 
 [optional]
+# the bar's music piece and the media keys, for browsers, mpv and the like (MPRIS)
+playerctl
 # the bar's network piece and its Wi-Fi menu (nmcli). Without it that piece says offline.
 networkmanager
 iw

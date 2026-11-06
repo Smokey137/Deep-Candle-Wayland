@@ -34,6 +34,7 @@ Made on 6 Nov 2026 from Deep Candle of that day, for rhine 0.5.0, river 0.5.0 an
 | bar | `.config/waybar/config.jsonc`, `style.css`; `.local/bin/bar`, `bar-markup`; the scripts of its pieces (`ram`, `disk`, `netspeed`, `hours`, `planhour`, `weather`, `music`, `volume`, `mic`, `netbar`); `.config/polybar-mine/colors.ini`, the palette they read (`palette`) |
 | launcher, menus | `.config/fuzzel/fuzzel.ini`; `.local/bin/launcher`, `runner`, `powermenu`, `sound`, `network`, `keys` |
 | what the keys run | `.local/bin/screenshot`, `ob-colorpicker`, `brightness`, `volume`, `music`, `osd` |
+| sound | `.local/bin/sound-server`: starts PipeWire, wireplumber and pipewire-pulse (Artix has no systemd to do it) |
 
 Mass Driver is a paid font: it must not go public with this repo.
 
@@ -65,7 +66,8 @@ Mass Driver is a paid font: it must not go public with this repo.
  rhine-session: the Wayland environment, TERMINAL, then
    dbus-run-session river -c rhine        → ~/.local/share/river/session.log
    ▼
- rhine reads ~/.config/river/config.rh, then starts: swaybg (the wallpaper), the bar
+ rhine reads ~/.config/river/config.rh, then starts: sound-server (PipeWire), swaybg (the
+   wallpaper), the bar
 ```
 
 `river` is the compositor (by Isaac Freund); `rhine` is the window manager on it (by

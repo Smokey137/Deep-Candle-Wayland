@@ -1,0 +1,11 @@
+#!/bin/sh
+# sound-server: PipeWire for this session. Artix has no systemd to start it, so rhine does
+# (config.rh, startup): pipewire, then its session manager (wireplumber) and its PulseAudio
+# side (pipewire-pulse: pactl, browsers, mpv). When rhine ends the session, all three end.
+pgrep -u "$(id -u)" -x pipewire >/dev/null && exit 0   # one already runs: leave it
+pipewire & p=$!
+sleep 1                                                # pipewire ready before the other two
+wireplumber & w=$!
+pipewire-pulse & q=$!
+trap 'kill $p $w $q 2>/dev/null' EXIT INT TERM
+wait

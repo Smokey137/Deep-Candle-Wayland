@@ -254,10 +254,12 @@ pointer_binds [
     alt, Right, pointerOp, resize
 ]
 
-## Started with the session, stopped when it ends: only the desktop itself (the wallpaper, the
-## bar). Each line is run by sh. Add apps here if you want them at login.
+## Started with the session, stopped when it ends: only the desktop itself (the sound server
+## the bar's sound pieces need, the wallpaper, the bar). Each line is run by sh. Add apps here
+## if you want them at login.
 startup [
     dbus-update-activation-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE HYPRLAND_INSTANCE_SIGNATURE
+    ~/.local/bin/sound-server
     swaybg -m fill -i "$HOME/.wallpaper"
     ~/.local/bin/bar
 ]
