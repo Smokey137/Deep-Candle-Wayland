@@ -1,0 +1,42 @@
+#!/bin/sh
+# calendar: previous, current and next month in rofi, Monday first.
+# Built in awk instead of parsing cal(1), so every part can be styled:
+# weekday names and weekends muted, today gold.
+export LC_ALL=C
+CAL=$(awk -v Y="$(date +%Y)" -v M="$(date +%-m)" -v D="$(date +%-d)" '
+function days(y, m) {
+  if (m == 2) return ((y % 4 == 0 && y % 100 != 0) || y % 400 == 0) ? 29 : 28
+  return (m == 4 || m == 6 || m == 9 || m == 11) ? 30 : 31
+}
+function first(y, m) { return strftime("%u", mktime(y " " m " 1 12 0 0")) + 0 }   # 1 = Monday
+function sp(n,   s) { s = ""; while (n-- > 0) s = s " "; return s }
+function c(col, s) { return "<span foreground=\x27" col "\x27>" s "</span>" }
+BEGIN {
+  split("January February March April May June July August September October November December", NAME, " ")
+  MUTED = "#8A7470"; GOLD = "#F7B922"
+  rows = 0
+  for (k = 0; k < 3; k++) {
+    m = M - 1 + k; y = Y
+    if (m < 1) { m += 12; y-- } else if (m > 12) { m -= 12; y++ }
+    t = NAME[m] " " y; l = int((20 - length(t)) / 2)
+    L[k, 0] = sp(l) "<b>" t "</b>" sp(20 - l - length(t))
+    L[k, 1] = c(MUTED, "Mo Tu We Th Fr Sa Su")
+    off = first(y, m) - 1; n = days(y, m); r = 2; line = sp(3 * off)
+    for (d = 1; d <= n; d++) {
+      wdy = (off + d - 1) % 7                                  # 0 = Monday ... 6 = Sunday
+      cell = sprintf("%2d", d)
+      if (k == 1 && d == D) cell = "<b>" c(GOLD, cell) "</b>"
+      else if (wdy >= 5)    cell = c(MUTED, cell)
+      line = line cell (wdy == 6 ? "" : " ")
+      if (wdy == 6 || d == n) { L[k, r] = line sp(wdy == 6 ? 0 : 3 * (6 - wdy) - 1); r++; line = "" }
+    }
+    if (r > rows) rows = r
+  }
+  for (i = 0; i < rows; i++) {
+    out = ""
+    for (k = 0; k < 3; k++) out = out (k ? "   " : "") ((k, i) in L ? L[k, i] : sp(20))
+    print out
+  }
+}')
+rofi -e "$CAL" -markup -theme "$HOME/.config/rofi/warm.rasi" -m "$("$HOME/.local/bin/screen-main")" -location 2 -yoffset 24 \
+     -theme-str "window {width: 74ch;}"

@@ -1,0 +1,28 @@
+#!/bin/sh
+# notes: the bar's notepad (~/Documents/notes.md)
+#   notes      show or hide the notes window (notes-window keeps it ready in the background)
+#   notes add  type one line in a small box; it's added with a timestamp
+F=${NOTES_FILE:-$HOME/Documents/notes.md}
+PIDF=${XDG_RUNTIME_DIR:-/tmp}/notes-window.pid
+
+if [ "$1" = add ]; then
+  # window open: type there instead
+  win=$(xdotool search --onlyvisible --name '^Notes$' 2>/dev/null | head -1)
+  [ -n "$win" ] && { xdotool windowactivate "$win"; exit 0; }
+  line=$(rofi -dmenu -p note -theme "$HOME/.config/rofi/warm.rasi" -m "$("$HOME/.local/bin/screen-main")" \
+           -location 2 -yoffset 24 \
+           -theme-str 'window {width: 50ch;} mainbox {children: [inputbar];} entry {placeholder: "Enter adds it to your notes";}' \
+           < /dev/null) || exit 0
+  [ -n "$line" ] || exit 0
+  umask 077; mkdir -p "${F%/*}"
+  [ -s "$F" ] && [ -n "$(tail -c1 "$F")" ] && echo >> "$F"   # start on a new line
+  printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M')" "$line" >> "$F"
+  exit 0
+fi
+
+pid=$(cat "$PIDF" 2>/dev/null)
+if [ -n "$pid" ] && tr '\0' '\n' < "/proc/$pid/cmdline" 2>/dev/null | sed -n 2p | grep -q '/notes-window$'; then
+  kill -USR1 "$pid"
+else
+  setsid -f "$(dirname "$0")/notes-window" --show >/dev/null 2>&1
+fi

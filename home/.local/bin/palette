@@ -1,0 +1,7 @@
+#!/bin/sh
+# palette NAME [FALLBACK]: a Deep Candle colour by its name in polybar-mine/colors.ini (BLUE,
+# YELLOW, ALTFOREGROUND, FAINT, ...) as #RRGGBB; FALLBACK when the file or the name isn't there.
+# The bar's scripts take their colours from here, so a change in colors.ini changes them too.
+c=$(sed -n "s/^[[:blank:]]*$1[[:blank:]]*=[[:blank:]]*\(#[0-9A-Fa-f]\{6\}\)[[:blank:]]*\$/\1/p" \
+  "${XDG_CONFIG_HOME:-$HOME/.config}/polybar-mine/colors.ini" 2>/dev/null | tail -n 1)
+printf '%s\n' "${c:-$2}"

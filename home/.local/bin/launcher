@@ -1,0 +1,3 @@
+#!/bin/sh
+rofi -show drun -theme "$HOME/.config/rofi/warm.rasi" -m "$("$HOME/.local/bin/screen-main")" \
+  -theme-str 'window { width: 520px; } listview { lines: 12; }'

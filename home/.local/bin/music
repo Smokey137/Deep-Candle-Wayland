@@ -1,0 +1,276 @@
+#!/bin/sh
+# music: the bar's music controls, for whatever is playing: YouTube and the like in the browser,
+# mpv, VLC, Spotify ... (anything that speaks MPRIS, through playerctl) and mpd (through mpc).
+#   music                 the bar line (polybar runs this): a note and play/pause (previous and
+#                         next were too easily hit by mistake there; the card and the keys have them).
+#                         The note is amethyst while music plays and muted while it's paused;
+#                         with no music at all only the note is there, faint, and nothing reacts
+#                         to clicks. While two or more play at once, how many, small and gold on
+#                         the note. The button under the pointer lights up (the card tells the bar
+#                         which one it is: polybar has no hover of its own), and a clicked one
+#                         flashes gold for a moment. A right click anywhere on it opens the card.
+#   music toggle | next | prev | stop
+#                         act on the music that's on (also the keyboard's media keys)
+#   music info            what's playing, in a card under the note, a part for each player, with
+#                         its own buttons (~/.local/bin/music-card, waiting in the background: it
+#                         opens at once); a click on the note opens it, the next click anywhere
+#                         closes it
+#   music now             what's on, for the card: mpris, mpd or none, the player, the state
+#                         (fields apart by a unit separator, \037)
+# What's on: the player chosen in the card (it writes $XDG_RUNTIME_DIR/music-pick), while it has
+# music; then, as before, something playing beats something paused. When mpd and another player
+# both play, or both are paused, the one that started playing last; among browser tabs and other
+# players, the one used last (playerctld keeps track of that).
+# Event-driven: it redraws when a player starts, stops, pauses or goes away, and when the card
+# changes the choice; nothing in between (while mpd isn't running, a look every 5 seconds whether
+# it has started). A player that stops answering (mpv stopped with Ctrl+Z, a hung browser) is
+# left out after a second instead of holding up the bar and the keys.
+ON=$("$HOME/.local/bin/palette" BLUE '#9B59D0') DIM=$("$HOME/.local/bin/palette" ALTFOREGROUND '#8A7470') OFF=$("$HOME/.local/bin/palette" FAINT '#5E4C4A')   # colors.ini
+GOLD=$("$HOME/.local/bin/palette" YELLOW '#F7B922') LIT=$("$HOME/.local/bin/palette" ALTWHITE '#FFF2E6')
+# Each button lies on a ground of the pill's own colour, but for its blue: off by 1 for the note, by
+# 3 for play/pause (no eye tells; 2 and 4 were previous and next, and the card still knows them by
+# these numbers), so the card can find the buttons on the bar by their ground. That's why the
+# pill's colour is read from polybar's colors.ini (PILL): it has to be the very same
+PILL=$("$HOME/.local/bin/palette" PILL '#26171F')
+NOTE=$(printf '\357\200\201') PLAY=$(printf '\357\201\213') PAUSE=$(printf '\357\201\214')
+RUN=${XDG_RUNTIME_DIR:-/tmp}
+LAST=$RUN/music-last    # mpd or mpris: which of the two started playing last (the bar writes it)
+NOWF=$RUN/music-now     # what's on, as the bar last saw it: the card opens with that one
+PICKF=$RUN/music-pick   # the player chosen in the card: mpris<SEP>its name, or mpd<SEP>
+SEP=$(printf '\037')    # between fields: never in a title, unlike tabs or |
+SLOWF=$RUN/music-slow   # a player didn't answer lately: they're asked one by one for a while
+
+doubles() {  # stdin: name<SEP>status lines; $1: name<SEP>title lines. Out: stdin but for a browser's
+             # own player while deep-candle-tabs shows that browser's tabs one by one and the tab it
+             # stands for is among them (or it shows nothing): that tab is there already
+  MUSIC_TITLES=$1 awk -F "$SEP" '
+    BEGIN {
+      n = split(ENVIRON["MUSIC_TITLES"], L, "\n")
+      for (i = 1; i <= n; i++)
+        if (split(L[i], f, FS) >= 2) { t = f[2]; gsub(/[ \t]+/, " ", t); sub(/^ /, "", t); sub(/ $/, "", t); title[f[1]] = t }
+    }
+    { line[NR] = $0; name[NR] = $1 }
+    match($1, /^browsertab\.b[0-9]+_/) { b = substr($1, 13, RLENGTH - 13); tabs[b] = 1; seen[b SUBSEP title[$1]] = 1 }
+    END {
+      for (i = 1; i <= NR; i++) {
+        if (match(name[i], /\.instance[0-9]+$/)) {
+          b = substr(name[i], RSTART + 9); t = title[name[i]]
+          if ((b in tabs) && (t == "" || ((b SUBSEP t) in seen))) continue
+        }
+        print line[i]
+      }
+    }'
+}
+
+all() {     # every MPRIS player as name<SEP>status, the one used last first (playerctld keeps that
+            # order), all in one go (names and states only: neither can hold a newline, a title can).
+            # A player that doesn't answer (mpv stopped with Ctrl+Z, a hung browser) would hold that up
+            # by D-Bus's 25 seconds: after a second it's one by one instead, each given a second (that
+            # one left out), for the next half minute
+  if [ ! -f "$SLOWF" ] || [ $(($(date +%s) - $(stat -c %Y "$SLOWF" 2>/dev/null || echo 0))) -ge 30 ]; then
+    out=$(timeout 1 playerctl -a metadata --format "{{playerInstance}}$SEP{{status}}" 2>/dev/null)
+    case $? in
+      0) printf '%s\n' "$out"; return ;;
+      124) : > "$SLOWF" ;;
+      *) return ;;                         # no players
+    esac
+  fi
+  playerctl -l 2>/dev/null | while IFS= read -r p; do
+    a=$(timeout 1 playerctl -p "$p" status 2>/dev/null) && printf '%s%s%s\n' "$p" "$SEP" "$a"
+  done
+}
+
+titles() {  # $1: the players (name<SEP>status lines). Out: name<SEP>title, a line each. A title is a
+            # player's word and may hold a newline or a separator: one that would read as more than
+            # its own line, or a player named twice, leaves that player without one (the bar takes
+            # neither a player nor a state from a title)
+  timeout 1 playerctl -a metadata --format "{{playerInstance}}$SEP{{trunc(title,300)}}" 2>/dev/null |
+    MUSIC_NAMES=$1 awk -F "$SEP" '
+      BEGIN { n = split(ENVIRON["MUSIC_NAMES"], L, "\n"); for (i = 1; i <= n; i++) { split(L[i], f, FS); ok[f[1]] = 1 } }
+      ($1 in ok) && NF == 2 && !($1 in seen) { seen[$1] = 1; order[++k] = $1; t[$1] = $2; last = $1; next }
+      ($1 in seen) { t[$1] = ""; last = ""; next }
+      { if (last != "") t[last] = ""; last = "" }
+      END { for (i = 1; i <= k; i++) printf "%s%s%s\n", order[i], FS, t[order[i]] }'
+}
+
+pick() {    # -> P (mpris, mpd or none), NOW (playing, paused or none), MP (the MPRIS player), N (how many play)
+  ALL=$(all)                           # every MPRIS player as name<SEP>status
+  case $ALL in                         # titles only with tabs about (doubles compares them)
+    *browsertab.b*) ALL=$(printf '%s\n' "$ALL" | doubles "$(titles "$ALL")") ;;
+  esac
+  MP=$(printf '%s\n' "$ALL" | awk -F "$SEP" '$2 == "Playing" { print $1; exit }') MS=playing
+  [ -n "$MP" ] || MP=$(printf '%s\n' "$ALL" | awk -F "$SEP" '$2 == "Paused" { print $1; exit }') MS=paused
+  [ -n "$MP" ] || MS=
+  DS=$(timeout 2 mpc status 2>/dev/null | sed -n 's/^\[\(playing\|paused\)\].*/\1/p')
+  N=$(printf '%s\n' "$ALL" | awk -F "$SEP" '$2 == "Playing"' | wc -l)
+  [ "$DS" = playing ] && N=$((N + 1))
+  P=none NOW=none
+  if [ -s "$PICKF" ]; then     # chosen in the card: that one, while it has music
+    K='' I=''
+    IFS=$SEP read -r K I < "$PICKF"
+    if [ "$K" = mpd ] && [ -n "$DS" ]; then
+      P=mpd NOW=$DS; return
+    fi
+    if [ "$K" = mpris ] && [ -n "$I" ]; then
+      case $(printf '%s\n' "$ALL" | awk -F "$SEP" -v i="$I" '$1 == i { print $2; exit }') in
+        Playing) P=mpris MP=$I NOW=playing; return ;;
+        Paused)  P=mpris MP=$I NOW=paused; return ;;
+      esac
+    fi
+    rm -f "$PICKF"             # it has no music any more: back to what's on
+  fi
+  if [ -n "$MS" ] && [ "$MS" = "$DS" ]; then         # both playing, or both paused
+    P=mpris NOW=$MS
+    [ "$(cat "$LAST" 2>/dev/null)" = mpd ] && P=mpd
+  elif [ "$MS" = playing ] || { [ "$MS" = paused ] && [ "$DS" != playing ]; }; then
+    P=mpris NOW=$MS
+  elif [ -n "$DS" ]; then
+    P=mpd NOW=$DS
+  fi
+}
+
+act() {     # $1: toggle, next, prev or stop
+  pick
+  case $P:$1 in
+    mpris:toggle) timeout 2 playerctl -p "$MP" play-pause ;;
+    mpris:next)   timeout 2 playerctl -p "$MP" next ;;
+    mpris:prev)   timeout 2 playerctl -p "$MP" previous ;;
+    mpris:stop)   timeout 2 playerctl -p "$MP" stop ;;
+    mpd:toggle)   timeout 2 mpc -q toggle ;;
+    mpd:next)     timeout 2 mpc -q next ;;
+    mpd:prev)     timeout 2 mpc -q prev ;;
+    mpd:stop)     timeout 2 mpc -q stop ;;
+  esac 2>/dev/null
+}
+
+count() {   # how many play, as a small raised number (Iosevka's superscript digits)
+  case $1 in
+    2) printf '\302\262' ;; 3) printf '\302\263' ;; 4) printf '\342\201\264' ;; 5) printf '\342\201\265' ;;
+    6) printf '\342\201\266' ;; 7) printf '\342\201\267' ;; 8) printf '\342\201\270' ;; 9) printf '\342\201\271' ;;
+    *) printf '\342\201\271\342\201\272' ;;
+  esac
+}
+
+ground() {  # $1: a button's number (1 to 4) -> the pill's colour with its blue off by that much
+  g=${PILL#?}; b=$((0x${g#????}))
+  if [ "$b" -gt 251 ]; then b=$((b - $1)); else b=$((b + $1)); fi
+  printf '#%s%02X' "${g%??}" "$b"
+}
+
+seg() {  # $1: the button (info or toggle), $2: its number, $3: the glyph, $4: px before it,
+         # $5: px after the space that follows it, $6: the gold count on the note.
+         # Every button is 23 px (the note's wider with the count), its glyph's ink in the middle.
+         # The glyphs run wider than their 8 px: the space after each, drawn with it, holds the
+         # overhang (an offset or another colour right after a glyph would paint over it, and cut it off)
+  if [ "$FL" = "$1" ]; then f=$GOLD
+  elif [ "$HOV" = "$1" ]; then f=$LIT
+  elif [ "$1" = info ]; then f=$NOTEC
+  else f=$ON
+  fi
+  c=; [ -n "$6" ] && c="%{F$GOLD}$6%{F$f}"
+  o=; [ "$5" -ne 0 ] && o="%{O$5}"
+  printf '%%{B%s}%%{F%s}%%{A1:%s %s:}%%{O%s}%s %s%s%%{A}%%{B-}' "$(ground "$2")" "$f" "$0" "$1" "$4" "$3" "$c" "$o"
+}
+
+draw() {  # the bar line from what show() found, with the button under the pointer and a clicked one.
+          # Polybar gone, the line ends (SIGPIPE's trap; and if that's lost, the failed write: bash 5.2
+          # loses a trapped signal that lands while it reads a $(...), and would run on)
+  if [ "$NOW" = none ]; then
+    printf '%%{O7}%%{T3}%%{F%s}%s %%{O6}%%{T-}%%{F-}\n' "$OFF" "$NOTE" || bye
+    return
+  fi
+  PP=$PLAY NOTEC=$DIM; [ "$NOW" = playing ] && PP=$PAUSE NOTEC=$ON
+  if [ "$N" -ge 2 ]; then MANY=$(count "$N") R=2; else MANY='' R=3; fi
+  printf '%%{A3:%s info:}%%{O3}%%{T3}%s%s%%{T-}%%{F-}%%{A3}\n' "$0" "$(seg info 1 "$NOTE" 4 "$R" "$MANY")" \
+    "$(seg toggle 3 "$PP" 7 0)" || bye
+}
+
+bye() {   # the bar's line ends: its followers and its fifo with it
+  kill $F1 $F2 $F3 2>/dev/null; rm -f "$FIFO" "$NOWF.$$"; exit 0
+}
+
+show() {
+  pick
+  # which of mpd and the other players started playing last (pick decides with it on a tie)
+  [ "$MS" = playing ] && [ "$OMS" != playing ] && echo mpris > "$LAST"
+  [ "$DS" = playing ] && [ "$ODS" != playing ] && echo mpd > "$LAST"
+  OMS=$MS ODS=$DS
+  W=; [ "$P" = mpris ] && W=$MP
+  printf '%s\037%s\037%s\n' "$P" "$W" "$NOW" > "$NOWF.$$" && mv -f "$NOWF.$$" "$NOWF"
+  draw
+}
+
+tell() {   # $1: a line for every bar's music line (each reads its fifo, $RUN/music.PID)
+  for f in "$RUN"/music.[0-9]*; do
+    [ -p "$f" ] && kill -0 "${f##*.}" 2>/dev/null && printf '%s\n' "$1" 1<>"$f"
+  done
+}
+
+mpd_follow() {   # a line whenever mpd plays, pauses or stops, and when it starts or quits; it ends
+                 # with the bar's line (even one killed outright)
+  trap 'kill $C 2>/dev/null; exit 0' TERM
+  while kill -0 $$ 2>/dev/null; do
+    if timeout 2 mpc status > /dev/null 2>&1; then
+      echo
+      mpc idleloop player & C=$!
+      wait $C
+      echo
+    fi
+    sleep 5 & C=$!
+    wait $C
+  done
+}
+
+case $1 in
+  toggle) tell "${SEP}flash $1"; act "$1"; exit 0 ;;   # the button flashes: the click got there
+  next|prev|stop) act "$1"; exit 0 ;;                    # (the keys: nothing on the bar to flash)
+  info)   # the card waits in the background: show or hide it; start it if it isn't running
+    tell "${SEP}flash info"
+    pid=; read -r pid 2>/dev/null < "$RUN/music-card.pid"
+    if [ -n "$pid" ] && grep -qa music-card "/proc/$pid/cmdline" 2>/dev/null; then
+      kill -USR1 "$pid"
+    else
+      setsid -f "$(dirname "$0")/music-card" --show > /dev/null 2>&1
+    fi
+    exit 0 ;;
+  now) pick; [ "$P" = mpris ] || MP=; printf '%s\037%s\037%s\n' "$P" "$MP" "$NOW"; exit 0 ;;
+  "") ;;
+  *) echo "usage: music [toggle|next|prev|stop|info|now]" >&2; exit 1 ;;
+esac
+
+# the bar: one line now, and a new one whenever a player or mpd changes, or the card's choice
+timeout 1 playerctl -p playerctld status > /dev/null 2>&1    # starts playerctld, which orders players by use
+for f in "$RUN"/music.[0-9]*; do       # left behind by a bar that was killed hard
+  [ -p "$f" ] && ! kill -0 "${f##*.}" 2>/dev/null && rm -f "$f"
+done
+printf '%s\n' "$PILL" > "$RUN/music-ground"   # for the card, which finds the buttons by it
+FIFO=$RUN/music.$$
+mkfifo -m 600 "$FIFO" || exit 1
+exec 3<>"$FIFO"
+F1='' F2='' F3=''
+# (each line names its player: playerctl doesn't repeat a line, so a second player pausing or
+# playing like the one before would otherwise go unseen)
+# The followers end with this line, even when it's killed outright (polybar crashing): mpd's at
+# its next line, with nowhere to go; playerctl, which shrugs that off, when its parent goes (setpriv)
+PD=; command -v setpriv > /dev/null && PD='setpriv --pdeathsig TERM --'
+command -v playerctl > /dev/null && { $PD playerctl -a -F status --format '{{playerInstance}} {{status}}' > "$FIFO" 3>&- 2>/dev/null & F1=$!; }
+command -v mpc > /dev/null && { ( exec 3>&-; mpd_follow ) > "$FIFO" 2>/dev/null & F2=$!; }   # (exec: dash keeps a
+                                                                    # copy of a function's fd 3 otherwise)
+# a player that goes away (a tab closed, mpv quit): playerctl says nothing of that, the bus does (a
+# line a player that comes or goes), so the button and the count follow at once
+command -v dbus-monitor > /dev/null && { $PD dbus-monitor --session --profile "type='signal',sender='org.freedesktop.DBus',\
+interface='org.freedesktop.DBus',member='NameOwnerChanged',arg0namespace='org.mpris.MediaPlayer2'" > "$FIFO" 3>&- 2>/dev/null & F3=$!; }
+trap bye TERM INT HUP PIPE
+HOV='' FL='' FN=0
+show
+# a line from the followers or the card (its choice): look again. From the card: the button under the
+# pointer (hover NAME, or hover - when it left); from a click: flash NAME, and a moment later its end
+while IFS= read -r line <&3; do
+  case $line in
+    "$SEP"hover\ *)   HOV=${line#"$SEP"hover }; [ "$HOV" = - ] && HOV=; draw ;;
+    "$SEP"flash\ *)   FN=$((FN + 1)) FL=${line#"$SEP"flash }; draw
+                      ( sleep 0.3; printf '%sunflash %s\n' "$SEP" "$FN" >&3 ) & ;;
+    "$SEP"unflash\ *) [ "${line#"$SEP"unflash }" = "$FN" ] && { FL=; draw; } ;;
+    *) show ;;
+  esac
+done

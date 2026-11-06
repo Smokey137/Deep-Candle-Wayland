@@ -1,0 +1,103 @@
+#!/bin/sh
+# netspeed: download / upload rate of the whole machine, for polybar (tail = true).
+# Adds up every physical interface (Wi-Fi, Ethernet, USB tethering). Loopback and
+# virtual ones (VM bridges, VPN tunnels, containers) are skipped: their traffic also
+# crosses a physical interface, so counting them too would count it twice.
+# Kept quiet on purpose: the numbers are in the bar's dim text colour, fainter still when
+# idle, and change at most every 3 seconds.
+#   netspeed          the bar line (polybar runs this)
+#   netspeed toggle   numbers <-> arrows only (a click on it); kept across restarts
+# Arrows only: faint when idle, dim for background traffic, amethyst from 100 KiB/s.
+STEP=3
+NET=${NET:-/sys/class/net}
+MODE=${XDG_STATE_HOME:-$HOME/.local/state}/netspeed          # "arrows" or "numbers"
+PIDF=${XDG_RUNTIME_DIR:-/tmp}/netspeed.pid
+DOWN=$(printf '\357\205\265')   # long arrow down (Nerd Font)
+UP=$(printf '\357\205\266')     # long arrow up
+ICON=$("$HOME/.local/bin/palette" BLUE '#9B59D0') TEXT=$("$HOME/.local/bin/palette" ALTFOREGROUND '#8A7470') IDLE=$("$HOME/.local/bin/palette" FAINT '#5E4C4A')   # colors.ini
+BUSY=102400
+
+if [ "$1" = toggle ]; then
+  m=; read -r m 2>/dev/null < "$MODE"
+  mkdir -p "${MODE%/*}"
+  if [ "$m" = arrows ]; then echo numbers > "$MODE"; else echo arrows > "$MODE"; fi
+  # redraw now rather than at the next update
+  read -r pid 2>/dev/null < "$PIDF" &&
+    tr '\0' ' ' 2>/dev/null < "/proc/$pid/cmdline" | grep -q netspeed && kill -USR1 "$pid"
+  exit 0
+fi
+
+total() {   # bytes received / sent over the physical interfaces since the last look -> DRX DTX.
+            # Each interface against its own count the last time (SEEN: " name:rx:tx" each), so
+            # one that comes, goes (a phone unplugged) or starts counting again adds nothing this
+            # time, and takes nothing off the others
+  DRX=0 DTX=0 now=
+  for d in "$NET"/*; do
+    [ -e "$d/device" ] || continue
+    read -r r < "$d/statistics/rx_bytes" 2>/dev/null || continue
+    read -r t < "$d/statistics/tx_bytes" 2>/dev/null || continue
+    n=${d##*/}; now="$now $n:$r:$t"
+    case "$SEEN " in
+      *" $n:"*) p=${SEEN#*" $n:"}; p=${p%%" "*}; pr=${p%%:*}; pt=${p#*:}
+                [ "$r" -ge "$pr" ] && DRX=$((DRX + r - pr))
+                [ "$t" -ge "$pt" ] && DTX=$((DTX + t - pt)) ;;
+    esac
+  done
+  SEEN=$now
+}
+
+rate() {    # $1 bytes per second -> R, always 4 characters: "  0K" .. "999K" "1.0M" .. "999M" "1.2G"
+  b=$1 k=$(( ($1 + 512) / 1024 ))
+  if [ "$k" -lt 1000 ]; then R="${k}K"
+  else
+    t=$(( (b * 10 + 524288) / 1048576 )) m=$(( (b + 524288) / 1048576 ))
+    if [ "$t" -lt 100 ]; then R="$((t / 10)).$((t % 10))M"
+    elif [ "$m" -lt 1000 ]; then R="${m}M"
+    else
+      t=$(( (k * 10 + 524288) / 1048576 ))
+      if [ "$t" -lt 100 ]; then R="$((t / 10)).$((t % 10))G"; else R="$(( (k + 524288) / 1048576 ))G"; fi
+    fi
+  fi
+  while [ ${#R} -lt 4 ]; do R=" $R"; done
+  if [ "$b" -lt 1024 ]; then R="%{F$IDLE}$R%{F-}"; else R="%{F$TEXT}$R%{F-}"; fi
+}
+
+shade() {   # $1 bytes per second -> C, the arrow's colour in arrows-only mode
+  if [ "$1" -ge "$BUSY" ]; then C=$ICON; elif [ "$1" -ge 1024 ]; then C=$TEXT; else C=$IDLE; fi
+}
+
+show() {
+  REDRAW= m=
+  read -r m 2>/dev/null < "$MODE"
+  if [ "$m" = arrows ]; then
+    shade "$DR"; CD=$C
+    shade "$DT"; CU=$C
+    printf '%%{F%s}%%{T3}%s%%{T-}%%{F-} %%{F%s}%%{T3}%s%%{T-}%%{F-}\n' "$CD" "$DOWN" "$CU" "$UP"
+  else
+    rate "$DR"; D=$R
+    rate "$DT"; U=$R
+    printf '%%{F%s}%%{T3}%s  %%{T-}%%{F-}%s  %%{F%s}%%{T3}%s  %%{T-}%%{F-}%s\n' "$ICON" "$DOWN" "$D" "$ICON" "$UP" "$U"
+  fi
+}
+
+# the bar's own run keeps the pid file: one started by hand alongside it leaves it be, so a
+# click still reaches the bar at once
+old=; read -r old 2>/dev/null < "$PIDF"
+if [ -z "$old" ] || [ "$old" = $$ ] || ! tr '\0' ' ' 2>/dev/null < "/proc/$old/cmdline" | grep -q netspeed; then
+  echo $$ > "$PIDF"
+fi
+REDRAW= SP=
+trap 'REDRAW=1' USR1
+trap 'kill $SP 2>/dev/null; exit 0' TERM INT HUP
+SEEN=; total; DR=0 DT=0
+show
+while :; do
+  sleep "$STEP" & SP=$!
+  while kill -0 "$SP" 2>/dev/null; do          # a click (USR1) cuts the wait short
+    wait "$SP"
+    if [ -n "$REDRAW" ]; then show; fi
+  done
+  total
+  DR=$((DRX / STEP)) DT=$((DTX / STEP))
+  show
+done

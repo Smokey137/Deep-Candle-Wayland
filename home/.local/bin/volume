@@ -1,0 +1,100 @@
+#!/bin/sh
+# usage: volume up | down | mute | mic | mic-up | mic-down | bar
+# Each change shows a short notice (~/.local/bin/osd), styled like any other notification, under
+# the name of the output (or the input) it changed, as the mixer has it (~/.local/bin/sound):
+# Speakers, Headphones, a Bluetooth headset's own.
+#   mic-up, mic-down   the microphone's level by 5, as the wheel on the bar's microphone; a muted
+#                one stays muted (as in the mixer)
+#   volume bar   the bar's speaker and its level (polybar, tail = true), as polybar's own pulseaudio
+#                module drew it; headphones instead while they're what plays. Event-driven: it
+#                waits on `pactl subscribe` and redraws only when a speaker or the default one
+#                changes, so it costs nothing while idle; when the sound server restarts it waits
+#                for it and goes on (polybar's own module froze instead).
+export LC_ALL=C
+SINK=@DEFAULT_SINK@
+SOURCE=@DEFAULT_SOURCE@
+OSD=$(dirname "$0")/osd
+SOUND=$(dirname "$0")/sound
+
+name() { n=$("$SOUND" name "$1" 2>/dev/null); echo "${n:-$2}"; }     # name out|in FALLBACK
+
+if [ "$1" = "mic" ]; then
+  pactl set-source-mute "$SOURCE" toggle
+  if [ "$(pactl get-source-mute "$SOURCE" | awk '{print $2}')" = "yes" ]; then
+    "$OSD" mic mic-off "$(name in Microphone)" off
+  else
+    "$OSD" mic mic "$(name in Microphone)" on
+  fi
+  exit 0
+fi
+
+if [ "$1" = mic-up ] || [ "$1" = mic-down ]; then
+  v=$(pactl get-source-volume "$SOURCE" | awk -F/ 'NR==1 { gsub(/[ %]/, "", $2); print $2 }')
+  case $v in ''|*[!0-9]*) exit 1 ;; esac
+  if [ "$1" = mic-up ]; then v=$(( (v + 5) / 5 * 5 )); [ "$v" -gt 100 ] && v=100
+  else                       v=$(( (v - 1) / 5 * 5 )); [ "$v" -lt 0 ] && v=0
+  fi
+  pactl set-source-volume "$SOURCE" "$v%"
+  if [ "$(pactl get-source-mute "$SOURCE" | awk '{print $2}')" = "yes" ]; then
+    "$OSD" mic mic-off "$(name in Microphone)" "off  ·  $v%" "$v"
+  else
+    "$OSD" mic mic "$(name in Microphone)" "$v%" "$v"
+  fi
+  exit 0
+fi
+
+get_vol() { pactl get-sink-volume "$SINK" | awk -F/ 'NR==1 { gsub(/[ %]/, "", $2); print $2 }'; }
+
+if [ "$1" = bar ]; then
+  LIVE='#9B59D0' MUTED='#8A7470'    # the bar's icon colour (color.BLUE), and its dim text
+  show() {    # the output in use: its level, and a speaker (0 to 2 waves, as polybar's ramp: 0-33,
+              # 34-66, 67 and up) or headphones (its port's kind, or the device's: a headset);
+              # crossed out while muted; nothing with no output, or no sound server yet
+    pactl list sinks 2>/dev/null | awk -v def="$(pactl get-default-sink 2>/dev/null)" -v live="$LIVE" -v dim="$MUTED" '
+      /^Sink #/          { if (on) exit }
+      /^\tName: /        { on = substr($0, 8) == def }
+      !on                { next }
+      /^\tPorts:/        { inp = 1; next }
+      /^\t[^\t]/         { inp = 0 }
+      /^\tMute: /        { mute = $2 }
+      /^\tVolume: / && match($0, /[0-9]+%/) { vol = substr($0, RSTART, RLENGTH - 1) }   # the first channel, as the keys
+      /^\tActive Port: / { port = substr($0, 15) }
+      /^\t\tdevice\.form_factor = / { ff = $3 }
+      inp && /^\t\t[^\t]/ && match($0, /\(type: [A-Za-z]+/) { p = substr($0, 3); KIND[substr(p, 1, index(p, ": ") - 1)] = substr($0, RSTART + 7, RLENGTH - 7) }
+      END {
+        if (vol == "") { print ""; exit }
+        phones = KIND[port] ~ /^(Headphones|Headset|Handset|Handsfree|Earpiece)$/ || ff ~ /^"(headphone|headset|hands-free|handset)"$/
+        if (mute == "yes")
+          printf "%%{F%s}%%{T3}%s  %%{T-}%s%%%%{F-}\n", dim, phones ? "\363\260\237\216" : "\363\260\226\201", vol
+        else
+          printf "%%{F%s}%%{T3}%s  %%{T-}%%{F-}%s%%\n", live, phones ? "\357\200\245" : vol + 0 >= 67 ? "\357\200\250" : vol + 0 >= 34 ? "\357\200\247" : "\357\200\246", vol
+      }'
+  }
+  while :; do
+    show
+    pactl subscribe 2>/dev/null | while read -r line; do
+      case $line in *" on sink "*|*" on server "*) show ;; esac
+    done
+    sleep 3                                   # sound server restarted or not up yet
+  done
+fi
+VOL=$(get_vol)
+case "$1" in
+  up)   NEW=$(( (VOL + 5) / 5 * 5 )); [ "$NEW" -gt 100 ] && NEW=100
+        pactl set-sink-mute "$SINK" 0; pactl set-sink-volume "$SINK" "${NEW}%" ;;
+  down) NEW=$(( (VOL - 1) / 5 * 5 )); [ "$NEW" -lt 0 ] && NEW=0
+        pactl set-sink-mute "$SINK" 0; pactl set-sink-volume "$SINK" "${NEW}%" ;;
+  mute) pactl set-sink-mute "$SINK" toggle ;;
+  *) exit 1 ;;
+esac
+
+VOL=$(get_vol)
+if [ "$(pactl get-sink-mute "$SINK" | awk '{print $2}')" = "yes" ]; then
+  "$OSD" volume volume-muted "$(name out Volume)" muted
+  exit 0
+fi
+if   [ "$VOL" -le 33 ]; then ICON=volume-low
+elif [ "$VOL" -le 66 ]; then ICON=volume-medium
+else                          ICON=volume-high
+fi
+"$OSD" volume "$ICON" "$(name out Volume)" "$VOL%" "$VOL"

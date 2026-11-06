@@ -1,0 +1,1055 @@
+#!/bin/sh
+# planhour: the planetary hours, the Sun, the Moon and the planets, the tattva, the decan, the
+# season and the Hebrew date, computed on this machine: no network, no location lookup.
+# Part of the planetary-hours kit (planhour, hours).
+#
+#   planhour       one line: the day's ruler, the hour's ruler, time left in the hour
+#   planhour -p    the clock's popup (Pango markup): the place (the weather's city: where on
+#                  the Earth, how high, its zone, its mean time and the sundial's, its air); the day
+#                  with its Hebrew date; the hour,
+#                  where its planet stands, its Sephira and names; the tattva; the 24 hours;
+#                  the Sun (rise, noon, set, midnight, the day, where it is now, twilights,
+#                  blue and golden hour); the Moon (where, phase, its next sign and when it is
+#                  void of course, rise, set, mansion, quarters, perigee, apogee); the seven
+#                  where they are; the decan; the season
+#   planhour -b    for the bar (hours bar): the hour's planet, its glyph and name, and the
+#                  seconds left in the hour ("- none 3600" where the Sun neither rises nor sets)
+#   planhour -r    the raw numbers, for checking
+#
+# Where the Sun doesn't rise or set (the polar night or day) there are no unequal hours, nor a
+# tattva tide from sunrise: the day is the civil day under its ruler, and the rest is as ever.
+#
+# Unequal hours: sunrise to sunset in twelve, sunset to the next sunrise in twelve, in the
+# Chaldean order from the day's ruler; the planetary day starts at sunrise. Sun: VSOP87 (the
+# series of NREL's Solar Position Algorithm), Moon: Meeus, Astronomical Algorithms, ch. 47;
+# both within a few arcseconds, so times come out within seconds (moon phases, decan and
+# season within half a minute). Planets: Mercury, Venus and Mars from JPL's approximate elements
+# (within an arcminute), Jupiter and Saturn from VSOP87 (IMCCE), truncated here (within 15
+# arcseconds: their JPL elements are 5 arcminutes out, which would put the Moon's last aspect to
+# them, and so its void of course, 10 minutes out).
+# Twilights: astronomical -18, nautical -12, civil -6 degrees; blue hour -8 to -4, golden hour
+# -4 to +6 (as Suntimes). Decans and their cards: the Golden Dawn's Book T. The Sephiroth and
+# their names: the Golden Dawn (Regardie). The tattva tide: the Golden Dawn's "The Tattwas of
+# the Eastern School", from sunrise one ghari (24 minutes) each, the round of five in two hours.
+# The mansions: Agrippa, Occult Philosophy II.33.
+# The hour's planet and the Sun: Lilly, Christian Astrology (cazimi within 17', combust within
+# 8 degrees 30', under the beams within 17 degrees).
+# The Hebrew calendar: Reingold and Dershowitz, Calendrical Calculations. Times are worked in
+# UT and shown by date(1), so summer time costs nothing.
+# Where: PLANHOUR_LAT and PLANHOUR_LON when both are set. Otherwise the city the weather shows
+# (the one picked in its panel, else its home), and away from home that city's own time: the
+# zone saved with the city, else the one named in its saved forecast; with no weather script,
+# London (an example).
+LAT=51.5074 LON=-0.1278 HLAT=51.5074 HLON=-0.1278 PLACE='' ZONE='' NAME=''
+if [ -n "${PLANHOUR_LAT:-}" ] && [ -n "${PLANHOUR_LON:-}" ]; then
+  LAT=$PLANHOUR_LAT LON=$PLANHOUR_LON
+else
+  T=$(printf '\t')
+  home=$("$HOME/.local/bin/weather" home 2>/dev/null)
+  here=$(head -n 1 "${XDG_CONFIG_HOME:-$HOME/.config}/weather/places" 2>/dev/null)
+  case $here in *"$T"*"$T"?*) ;; *) here=$home ;; esac
+  case $home in *"$T"*"$T"?*) HLAT=${home%%"$T"*}; h=${home#*"$T"}; HLON=${h%%"$T"*} ;; esac
+  case $here in *"$T"*"$T"?*) LAT=${here%%"$T"*}; h=${here#*"$T"}; LON=${h%%"$T"*}; NAME=${h#*"$T"} ;; esac
+  case $NAME in *"$T"*) ZONE=${NAME#*"$T"}; NAME=${NAME%%"$T"*} ;; esac      # the city's zone (weather 10)
+  case $LAT$LON$HLAT$HLON in *[!0-9.-]*) LAT=51.5074 LON=-0.1278 HLAT=51.5074 HLON=-0.1278 ;; esac
+  if awk -v a="$LAT" -v b="$LON" -v c="$HLAT" -v d="$HLON" 'BEGIN { exit !((a - c) ^ 2 + (b - d) ^ 2 >= 0.01) }'; then
+    PLACE=${NAME%%,*}
+    case $ZONE in *[!A-Za-z0-9_/+-]*|/*|*..*) ZONE='' ;; esac
+    [ -n "$ZONE" ] || ZONE=$(sed -n 's/.*"timezone":"\([A-Za-z0-9_/+-]*\)".*/\1/p' \
+                               "${XDG_CACHE_HOME:-$HOME/.cache}/weather/$LAT,$LON.json" 2>/dev/null)
+    if [ -n "$ZONE" ] && [ -f "/usr/share/zoneinfo/$ZONE" ]; then export TZ="$ZONE"; else ZONE=''; unset TZ; fi
+  else
+    ZONE=''; unset TZ                       # at home: the computer's own zone
+  fi
+fi
+# The place for the popup: the city and its country; its altitude, as the weather script saves it
+# (Open-Meteo's elevation model, 90 m, at the city's coordinates); the zone the times are in
+case $NAME in *,*) CITY="${NAME%%,*}, ${NAME##*, }" ;; *) CITY=$NAME ;; esac
+ELEV=$(sed -n 's/.*"elevation":\[\(-\{0,1\}[0-9.]*\)\].*/\1/p' \
+         "${XDG_CACHE_HOME:-$HOME/.cache}/weather/$LAT,$LON.elevation.json" 2>/dev/null | head -n 1)
+TZNAME=${ZONE:-${TZ:-$(readlink /etc/localtime 2>/dev/null | sed 's|.*/zoneinfo/||')}}
+TZNAME=${TZNAME#:}
+# The zodiac the signs, decans and mansions are counted in (the seasons are always tropical;
+# Agrippa counts the mansions from the stars, which is what regulus does):
+#   tropical  from the spring equinox, as modern decan practice dates the small cards
+#   regulus   from Cor Leonis at 0 Leo, as Book T says: "the beginning of the Decanates is
+#             from the royal Star of Leo, the great Star Cor Leonis" (sidereal; today about
+#             30 degrees behind tropical)
+ZODIAC=${PLANHOUR_ZODIAC:-tropical}
+DT=69                            # TT - UT in seconds (2026; it changes by under a second a year)
+NOW=${PLANHOUR_NOW:-$(date +%s)}
+export LC_ALL=C
+
+case ${1:-} in
+  '')  MODE=line ;;
+  -p)  MODE=panel ;;
+  -b)  MODE=bar ;;
+  -r)  MODE=raw ;;
+  *)   echo "usage: planhour [-p | -b | -r]" >&2; exit 2 ;;
+esac
+case $ZODIAC in
+  tropical|regulus) ;;
+  *) echo "planhour: ZODIAC is tropical or regulus, not '$ZODIAC'" >&2; exit 2 ;;
+esac
+# The air this hour, as the weather script saves it with each forecast (Open-Meteo's, from CAMS;
+# its hours in UT): the European index, PM2.5, PM10, NO2, ozone, and the index of each; nothing
+# when none of its hours is now
+AIR=$(awk -v NOW="$NOW" '
+  function at(k, i,   v) {
+    if (!match(J, "\"" k "\":\\[[^]]*\\]")) return "null"
+    split(substr(J, RSTART + length(k) + 4, RLENGTH - length(k) - 5), v, ","); return v[i]
+  }
+  { J = J $0 }
+  END {
+    if (!match(J, /"time":\[[^]]*\]/)) exit
+    n = split(substr(J, RSTART + 8, RLENGTH - 9), t, ",")
+    for (i = 1; i <= n && !(t[i] <= NOW && NOW < t[i] + 3600); i++) ;
+    if (i > n) exit
+    print at("european_aqi", i), at("pm2_5", i), at("pm10", i), at("nitrogen_dioxide", i), at("ozone", i), \
+          at("european_aqi_pm2_5", i), at("european_aqi_pm10", i), at("european_aqi_nitrogen_dioxide", i), \
+          at("european_aqi_ozone", i)
+  }' "${XDG_CACHE_HOME:-$HOME/.cache}/weather/$LAT,$LON.air.json" 2>/dev/null)
+
+TODAY=$(date -d "@$NOW" +%Y-%m-%d)
+# the day's bounds; where the clocks skip midnight for summer time (Havana, Beirut, Cairo, Santiago),
+# the day starts at 01:00, and date(1) gets no 00:00 to take
+NOON=$(date -d "$TODAY 12:00" +%s); NEXT=$(date -d "@$((NOON + 86400))" +%F)
+D0=$(date -d "$TODAY 00:00" +%s 2>/dev/null || date -d "$TODAY 01:00" +%s)
+D1=$(date -d "$NEXT 00:00" +%s 2>/dev/null || date -d "$NEXT 01:00" +%s)
+SKY=$(awk -v LAT="$LAT" -v LON="$LON" -v NOW="$NOW" -v D0="$D0" -v D1="$D1" -v DT="$DT" \
+          -v ZOD="$ZODIAC" -v Z="$(date -d "@$NOW" +%z)" "$(cat <<'AWK'
+# sky: the planetary day and hours, the Sun (twilights, blue and golden hour, noon), the Moon
+# (rise and set, phases, apsides), the planets, the tattva, the decan and the season, for planhour.
+# In (-v): LAT LON (degrees, east +), NOW (seconds since 1970, UT), D0 D1 (the local day
+# start and end), DT (TT - UT in seconds), ZOD (tropical or regulus).
+# Out: "n KEY VALUE" for a number, "t KEY SECONDS" for a time (-1: does not happen).
+# Sun: VSOP87 for the Earth, as truncated in the Solar Position Algorithm of NREL (about 1
+# arcsecond). Moon: Meeus, Astronomical Algorithms, ch. 47, tables 47.A and 47.B in full
+# (about 10 arcseconds). Rise, set and twilight as in Meeus ch. 15. Planets: JPL's approximate
+# Keplerian elements for Mercury, Venus and Mars (within an arcminute); VSOP87D for Jupiter and
+# Saturn, terms over 1e-5 (a hundredth of that for each power of time; within 15 arcseconds).
+function floor(x) { return x == int(x) || x >= 0 ? int(x) : int(x) - 1 }
+function fmod(a, b) { return a - b * floor(a / b) }
+function rad(d) { return d * PI / 180 }
+function deg(r) { return r * 180 / PI }
+function asin(x) { return atan2(x, sqrt(1 - x * x)) }
+function acos(x) { return atan2(sqrt(1 - x * x), x) }
+function wrap(x) { return fmod(x + 180, 360) - 180 }                 # to -180 .. 180
+function cent(t) { return ((t + DT) / 86400 - 10957.5) / 36525 }     # TT centuries from J2000
+function out(kind, key, v) { printf "%s %s %.6f\n", kind, key, v }
+function outt(key, v) { printf "t %s %d\n", key, (v < 0 ? -1 : int(v + 0.5)) }
+
+# nutation (to 0.5 arcsecond) and true obliquity: DPSI, EPS in degrees
+function nut(T,   Om, L, Lp) {
+  Om = rad(125.04452 - 1934.136261 * T); L = rad(280.4665 + 36000.7698 * T)
+  Lp = rad(218.3165 + 481267.8813 * T)
+  DPSI = (-17.20 * sin(Om) - 1.32 * sin(2 * L) - 0.23 * sin(2 * Lp) + 0.21 * sin(2 * Om)) / 3600
+  EPS = 23.4392911111 - 0.0130041667 * T - 1.6389e-7 * T * T + 5.0361e-7 * T * T * T \
+        + (9.20 * cos(Om) + 0.57 * cos(2 * L) + 0.10 * cos(2 * Lp) - 0.09 * cos(2 * Om)) / 3600
+}
+
+# a VSOP87 series of the Earth (as truncated in the Solar Position Algorithm of NREL), at tau
+# Julian millennia from J2000 (TT)
+function vs(name, tau,   i, s) {
+  s = 0
+  for (i = 1; i <= VN[name]; i++) s += VA[name, i] * cos(VB[name, i] + VC[name, i] * tau)
+  return s
+}
+# the Sun at t: SL apparent longitude, SRA right ascension (degrees), SDEC declination
+# (radians), SE equation of time (minutes), SR distance (AU). The Earth from VSOP87 (about
+# 1 arcsecond), then FK5, nutation and aberration as in Meeus ch. 25.
+function sun(t,   T, tau, L, B, R, L0, ep, l, b) {
+  T = cent(t); tau = T / 10
+  earth(tau); L = EL; B = EB; R = ER
+  nut(T); SR = R
+  SL = fmod(deg(L) + 180 - 0.09033 / 3600 + DPSI - 20.4898 / 3600 / R, 360)
+  ep = rad(EPS); l = rad(SL); b = -B
+  SRA = fmod(deg(atan2(sin(l) * cos(ep) - sin(b) / cos(b) * sin(ep), cos(l))), 360)
+  SDEC = asin(sin(b) * cos(ep) + cos(b) * sin(ep) * sin(l))
+  L0 = 280.4664567 + 360007.6982779 * tau + 0.03032028 * tau * tau + tau * tau * tau / 49931 \
+       - tau * tau * tau * tau / 15300 - tau * tau * tau * tau * tau / 2000000
+  SE = 4 * wrap(L0 - 0.0057183 - SRA + DPSI * cos(ep))
+}
+
+# the Earth (VSOP87, heliocentric, ecliptic of date) at tau: EL EB (radians) ER (au)
+function earth(tau) {
+  EL = (vs("L0", tau) + tau * (vs("L1", tau) + tau * (vs("L2", tau) + tau * (vs("L3", tau) \
+        + tau * (vs("L4", tau) + tau * vs("L5", tau)))))) / 1e8
+  EB = (vs("B0", tau) + tau * vs("B1", tau)) / 1e8
+  ER = (vs("R0", tau) + tau * (vs("R1", tau) + tau * (vs("R2", tau) + tau * (vs("R3", tau) \
+        + tau * vs("R4", tau))))) / 1e8
+}
+# a VSOP87D series of Jupiter or Saturn (p: J or S; x: L, B or R) at tau, all its powers of time
+function vp(p, x, tau,   k, s, f) {
+  s = 0; f = 1
+  for (k = 0; (p x k) in VN; k++) { s += f * vs(p x k, tau); f *= tau }
+  return s / 1e8
+}
+# Jupiter or Saturn (p: J or S) seen from the Earth at t: VSOP87D, light-time, aberration and
+# nutation (Meeus ch. 33): the apparent longitude of date (degrees)
+function vplon(p, t,   T, tau, ex, ey, ez, lt, i, l, b, r, x, y, z, lam, bet) {
+  T = cent(t); tau = T / 10; earth(tau)
+  ex = ER * cos(EB) * cos(EL); ey = ER * cos(EB) * sin(EL); ez = ER * sin(EB); lt = 0
+  for (i = 0; i < 2; i++) {                  # where it was when its light left it
+    l = vp(p, "L", tau - lt / 365250); b = vp(p, "B", tau - lt / 365250); r = vp(p, "R", tau - lt / 365250)
+    x = r * cos(b) * cos(l) - ex; y = r * cos(b) * sin(l) - ey; z = r * sin(b) - ez
+    lt = 0.0057755183 * sqrt(x * x + y * y + z * z)
+  }
+  lam = atan2(y, x); bet = atan2(z, sqrt(x * x + y * y)); nut(T)
+  return fmod(deg(lam) - 0.09033 / 3600 + DPSI - 20.49552 * cos(EL + PI - lam) / cos(bet) / 3600, 360)
+}
+# the Moon at t: ML apparent longitude, MB latitude (degrees), MD distance (km), MRA (degrees),
+# MDEC (radians), MPAR horizontal parallax (degrees)
+function moon(t,   T, Lp, D, M, Mp, F, A1, A2, A3, E, E2, sl, sr, sb, i, a, f, ep, l, b) {
+  T = cent(t)
+  Lp = 218.3164477 + 481267.88123421 * T - 0.0015786 * T * T + T * T * T / 538841 - T * T * T * T / 65194000
+  D = 297.8501921 + 445267.1114034 * T - 0.0018819 * T * T + T * T * T / 545868 - T * T * T * T / 113065000
+  M = 357.5291092 + 35999.0502909 * T - 0.0001535 * T * T + T * T * T / 24490000
+  Mp = 134.9633964 + 477198.8675055 * T + 0.0087414 * T * T + T * T * T / 69699 - T * T * T * T / 14712000
+  F = 93.272095 + 483202.0175233 * T - 0.0036539 * T * T - T * T * T / 3526000 + T * T * T * T / 863310000
+  A1 = 119.75 + 131.849 * T; A2 = 53.09 + 479264.29 * T; A3 = 313.45 + 481266.484 * T
+  E = 1 - 0.002516 * T - 0.0000074 * T * T; EF[0] = 1; EF[1] = E; EF[2] = E * E
+  sl = 3958 * sin(rad(A1)) + 1962 * sin(rad(Lp - F)) + 318 * sin(rad(A2)); sr = 0
+  sb = -2235 * sin(rad(Lp)) + 382 * sin(rad(A3)) + 175 * sin(rad(A1 - F)) + 175 * sin(rad(A1 + F)) \
+       + 127 * sin(rad(Lp - Mp)) - 115 * sin(rad(Lp + Mp))
+  D = rad(fmod(D, 360)); M = rad(fmod(M, 360)); Mp = rad(fmod(Mp, 360)); F = rad(fmod(F, 360))
+  for (i = 1; i <= NA; i++) {
+    a = AD[i] * D + AM[i] * M + AMp[i] * Mp + AF[i] * F; f = EF[AE[i]]
+    sl += AL[i] * f * sin(a); sr += AR[i] * f * cos(a)
+  }
+  for (i = 1; i <= NB; i++) sb += BB[i] * EF[BE[i]] * sin(BD[i] * D + BM[i] * M + BMp[i] * Mp + BF[i] * F)
+  nut(T)
+  ML = fmod(Lp + sl / 1e6 + DPSI, 360); MB = sb / 1e6; MD = 385000.56 + sr / 1000
+  MPAR = deg(asin(6378.14 / MD))
+  ep = rad(EPS); l = rad(ML); b = rad(MB)
+  MRA = fmod(deg(atan2(sin(l) * cos(ep) - sin(b) / cos(b) * sin(ep), cos(l))), 360)
+  MDEC = asin(sin(b) * cos(ep) + cos(b) * sin(ep) * sin(l))
+}
+
+# apparent sidereal time at Greenwich (degrees) for t (UT)
+function gast(t,   d, T) {
+  d = t / 86400 - 10957.5; T = d / 36525; nut(cent(t))
+  return fmod(280.46061837 + 360.98564736629 * d + 0.000387933 * T * T - T * T * T / 38710000 \
+              + DPSI * cos(rad(EPS)), 360)
+}
+# geocentric altitude and azimuth (from north, degrees) of RA ra (degrees), dec (radians) at t
+function altaz(t, ra, dec,   H, f) {
+  H = rad(gast(t) + LON - ra); f = rad(LAT)
+  ALT = deg(asin(sin(f) * sin(dec) + cos(f) * cos(dec) * cos(H)))
+  AZ = fmod(deg(atan2(sin(H), cos(H) * sin(f) - sin(dec) / cos(dec) * cos(f))) + 180, 360)
+}
+
+# the Sun at altitude h0 on day z (days since 1970, the local date) rising (up 1) or setting
+function sunalt(z, h0, up,   t, i, x) {
+  t = 12 - LON / 15 + (up ? -6 : 6)                                # hours UT, a first guess
+  for (i = 0; i < 5; i++) {
+    sun(z * 86400 + t * 3600)
+    x = (sin(rad(h0)) - sin(rad(LAT)) * sin(SDEC)) / (cos(rad(LAT)) * cos(SDEC))
+    if (x > 1 || x < -1) return -1
+    t = 12 - LON / 15 - SE / 60 + (up ? -1 : 1) * deg(acos(x)) / 15
+  }
+  return z * 86400 + t * 3600
+}
+# the upper transit of the Sun on day z (anti: the lower transit, solar midnight, after it)
+function transit(z, anti,   t, i) {
+  t = (anti ? 24 : 12) - LON / 15
+  for (i = 0; i < 3; i++) { sun(z * 86400 + t * 3600); t = (anti ? 24 : 12) - LON / 15 - SE / 60 }
+  return z * 86400 + t * 3600
+}
+# the longitude counted in the chosen zodiac: from the equinox, or from Regulus at 0 Leo
+function zshift(t) { return ZOD == "regulus" ? 149.8291 + 0.013912 * (t / 86400 - 10957.5) / 365.25 - 120 : 0 }
+# when the Sun reaches longitude b (zodiac frame, or tropical when trop) between ta and tb
+function sunreach(b, ta, tb, trop,   m) {
+  while (tb - ta > 1) {
+    m = (ta + tb) / 2; sun(m)
+    if (wrap(SL - (trop ? 0 : zshift(m)) - b) < 0) ta = m; else tb = m
+  }
+  return (ta + tb) / 2
+}
+# elongation of the Moon from the Sun (degrees, 0 new .. 180 full) and illuminated fraction
+function phase(t,   psi, R) {
+  sun(t); moon(t)
+  ELONG = fmod(ML - SL, 360)
+  R = SR * 149597870.7; psi = acos(cos(rad(MB)) * cos(rad(ML - SL)))
+  ILLUM = (1 + cos(atan2(R * sin(psi), MD - R * cos(psi)))) / 2
+}
+# when the elongation reaches b (degrees) between ta and tb
+function moonreach(b, ta, tb,   m) {
+  while (tb - ta > 1) {
+    m = (ta + tb) / 2; phase(m)
+    if (wrap(ELONG - b) < 0) ta = m; else tb = m
+  }
+  return (ta + tb) / 2
+}
+# the altitude of the Moon above its rising altitude (upper limb on the horizon, with refraction)
+function moonup(t) { moon(t); altaz(t, MRA, MDEC); return ALT - (0.7275 * MPAR - 0.5667) }
+# planet p around the Sun at T (centuries): HX HY (au, J2000 mean ecliptic). Elements and rates
+# from E. M. Standish and J. G. Williams, "Keplerian Elements for Approximate Positions of the
+# Major Planets" (JPL), table 1, valid 1800-2050; Kepler's equation by Newton's method.
+function helio(p, T,   el, a, e, I, M, w, O, E, dE, x, y) {
+  split(PEL[p], el, " ")
+  a = el[1] + el[2] * T; e = el[3] + el[4] * T; I = rad(el[5] + el[6] * T)
+  w = el[9] + el[10] * T; O = el[11] + el[12] * T
+  M = rad(fmod(el[7] + el[8] * T - w, 360)); w = rad(w - O); O = rad(O)
+  E = M + e * sin(M); dE = 1
+  while (dE > 1e-10 || dE < -1e-10) { dE = (M - E + e * sin(E)) / (1 - e * cos(E)); E += dE }
+  x = a * (cos(E) - e); y = a * sqrt(1 - e * e) * sin(E)
+  HX = (cos(w) * cos(O) - sin(w) * sin(O) * cos(I)) * x - (sin(w) * cos(O) + cos(w) * sin(O) * cos(I)) * y
+  HY = (cos(w) * sin(O) + sin(w) * cos(O) * cos(I)) * x + (cos(w) * cos(O) * cos(I) - sin(w) * sin(O)) * y
+}
+# planet p seen from the Earth at t: ecliptic longitude of the equinox of date (degrees)
+function plon(p, t,   T, x, y) {
+  if (p == "Jupiter" || p == "Saturn") return vplon(substr(p, 1, 1), t)
+  T = cent(t); helio(p, T); x = HX; y = HY; helio("Earth", T)
+  return fmod(deg(atan2(y - HY, x - HX)) + (5028.796195 * T + 1.1054348 * T * T) / 3600, 360)
+}
+BEGIN {
+  PI = atan2(0, -1)
+  TA = "0 0 1 0 6288774 -20905355;2 0 -1 0 1274027 -3699111;2 0 0 0 658314 -2955968;" \
+       "0 0 2 0 213618 -569925;0 1 0 0 -185116 48888;0 0 0 2 -114332 -3149;2 0 -2 0 58793 246158;" \
+       "2 -1 -1 0 57066 -152138;2 0 1 0 53322 -170733;2 -1 0 0 45758 -204586;" \
+       "0 1 -1 0 -40923 -129620;1 0 0 0 -34720 108743;0 1 1 0 -30383 104755;2 0 0 -2 15327 10321;" \
+       "0 0 1 2 -12528 0;0 0 1 -2 10980 79661;4 0 -1 0 10675 -34782;0 0 3 0 10034 -23210;" \
+       "4 0 -2 0 8548 -21636;2 1 -1 0 -7888 24208;2 1 0 0 -6766 30824;1 0 -1 0 -5163 -8379;" \
+       "1 1 0 0 4987 -16675;2 -1 1 0 4036 -12831;2 0 2 0 3994 -10445;4 0 0 0 3861 -11650;" \
+       "2 0 -3 0 3665 14403;0 1 -2 0 -2689 -7003;2 0 -1 2 -2602 0;2 -1 -2 0 2390 10056;" \
+       "1 0 1 0 -2348 6322;2 -2 0 0 2236 -9884;0 1 2 0 -2120 5751;0 2 0 0 -2069 0;" \
+       "2 -2 -1 0 2048 -4950;2 0 1 -2 -1773 4130;2 0 0 2 -1595 0;4 -1 -1 0 1215 -3958;" \
+       "0 0 2 2 -1110 0;3 0 -1 0 -892 3258;2 1 1 0 -810 2616;4 -1 -2 0 759 -1897;" \
+       "0 2 -1 0 -713 -2117;2 2 -1 0 -700 2354;2 1 -2 0 691 0;2 -1 0 -2 596 0;4 0 1 0 549 -1423;" \
+       "0 0 4 0 537 -1117;4 -1 0 0 520 -1571;1 0 -2 0 -487 -1739;2 1 0 -2 -399 0;" \
+       "0 0 2 -2 -381 -4421;1 1 1 0 351 0;3 0 -2 0 -340 0;4 0 -3 0 330 0;2 -1 2 0 327 0;" \
+       "0 2 1 0 -323 1165;1 1 -1 0 299 0;2 0 3 0 294 0;2 0 -1 -2 0 8752"
+  TB = "0 0 0 1 5128122;0 0 1 1 280602;0 0 1 -1 277693;2 0 0 -1 173237;2 0 -1 1 55413;" \
+       "2 0 -1 -1 46271;2 0 0 1 32573;0 0 2 1 17198;2 0 1 -1 9266;0 0 2 -1 8822;2 -1 0 -1 8216;" \
+       "2 0 -2 -1 4324;2 0 1 1 4200;2 1 0 -1 -3359;2 -1 -1 1 2463;2 -1 0 1 2211;2 -1 -1 -1 2065;" \
+       "0 1 -1 -1 -1870;4 0 -1 -1 1828;0 1 0 1 -1794;0 0 0 3 -1749;0 1 -1 1 -1565;1 0 0 1 -1491;" \
+       "0 1 1 1 -1475;0 1 1 -1 -1410;0 1 0 -1 -1344;1 0 0 -1 -1335;0 0 3 1 1107;4 0 0 -1 1021;" \
+       "4 0 -1 1 833;0 0 1 -3 777;4 0 -2 1 671;2 0 0 -3 607;2 0 2 -1 596;2 -1 1 -1 491;" \
+       "2 0 -2 1 -451;0 0 3 -1 439;2 0 2 1 422;2 0 -3 -1 421;2 1 -1 1 -366;2 1 0 1 -351;4 0 0 1 331;" \
+       "2 -1 1 1 315;2 -2 0 -1 302;0 0 1 3 -283;2 1 1 -1 -229;1 1 0 -1 223;1 1 0 1 223;" \
+       "0 1 -2 -1 -220;2 1 -1 -1 -220;1 0 1 1 -185;2 -1 -2 -1 181;0 1 2 1 -177;4 0 -2 -1 176;" \
+       "4 -1 -1 -1 166;1 0 1 -1 -164;4 0 1 -1 132;1 0 -1 -1 -119;4 -1 0 -1 115;2 -2 0 1 107"
+  # a, e, I, L, perihelion, node: value and change per century (au, -, degrees); the Earth is
+  # the Earth-Moon barycentre of the table
+  PEL["Mercury"] = "0.38709927 0.00000037 0.20563593 0.00001906 7.00497902 -0.00594749 " \
+                   "252.25032350 149472.67411175 77.45779628 0.16047689 48.33076593 -0.12534081"
+  PEL["Venus"]   = "0.72333566 0.00000390 0.00677672 -0.00004107 3.39467605 -0.00078890 " \
+                   "181.97909950 58517.81538729 131.60246718 0.00268329 76.67984255 -0.27769418"
+  PEL["Earth"]   = "1.00000261 0.00000562 0.01671123 -0.00004392 -0.00001531 -0.01294668 " \
+                   "100.46457166 35999.37244981 102.93768193 0.32327364 0.0 0.0"
+  PEL["Mars"]    = "1.52371034 0.00001847 0.09339410 0.00007882 1.84969142 -0.00813131 " \
+                   "-4.55343205 19140.30268499 -23.94362959 0.44441088 49.55953891 -0.29257343"
+  V["L0"] = "175347046 0.0 0.0;3341656 4.6692568 6283.07585;34894 4.6261 12566.1517;" \
+           "3497 2.7441 5753.3849;3418 2.8289 3.5231;3136 3.6277 77713.7715;2676 4.4181 7860.4194;" \
+           "2343 6.1352 3930.2097;1324 0.7425 11506.7698;1273 2.0371 529.691;1199 1.1096 1577.3435;" \
+           "990 5.233 5884.927;902 2.045 26.298;857 3.508 398.149;780 1.179 5223.694;753 2.533 5507.553;" \
+           "505 4.583 18849.228;492 4.205 775.523;357 2.92 0.067;317 5.849 11790.629;284 1.899 796.298;" \
+           "271 0.315 10977.079;243 0.345 5486.778;206 4.806 2544.314;205 1.869 5573.143;" \
+           "202 2.458 6069.777;156 0.833 213.299;132 3.411 2942.463;126 1.083 20.775;115 0.645 0.98;" \
+           "103 0.636 4694.003;102 0.976 15720.839;102 4.267 7.114;99 6.21 2146.17;98 0.68 155.42;" \
+           "86 5.98 161000.69;85 1.3 6275.96;85 3.67 71430.7;80 1.81 17260.15;79 3.04 12036.46;" \
+           "75 1.76 5088.63;74 3.5 3154.69;74 4.68 801.82;70 0.83 9437.76;62 3.98 8827.39;" \
+           "61 1.82 7084.9;57 2.78 6286.6;56 4.39 14143.5;56 3.47 6279.55;52 0.19 12139.55;" \
+           "52 1.33 1748.02;51 0.28 5856.48;49 0.49 1194.45;41 5.37 8429.24;41 2.4 19651.05;" \
+           "39 6.17 10447.39;37 6.04 10213.29;37 2.57 1059.38;36 1.71 2352.87;36 1.78 6812.77;" \
+           "33 0.59 17789.85;30 0.44 83996.85;30 2.74 1349.87;25 3.16 4690.48"
+  V["L1"] = "628331966747 0.0 0.0;206059 2.678235 6283.07585;4303 2.6351 12566.1517;425 1.59 3.523;" \
+           "119 5.796 26.298;109 2.966 1577.344;93 2.59 18849.23;72 1.14 529.69;68 1.87 398.15;" \
+           "67 4.41 5507.55;59 2.89 5223.69;56 2.17 155.42;45 0.4 796.3;36 0.47 775.52;29 2.65 7.11;" \
+           "21 5.34 0.98;19 1.85 5486.78;19 4.97 213.3;17 2.99 6275.96;16 0.03 2544.31;16 1.43 2146.17;" \
+           "15 1.21 10977.08;12 2.83 1748.02;12 3.26 5088.63;12 5.27 1194.45;12 2.08 4694.0;" \
+           "11 0.77 553.57;10 1.3 6286.6;10 4.24 1349.87;9 2.7 242.73;9 5.64 951.72;8 5.3 2352.87;" \
+           "6 2.65 9437.76;6 4.67 4690.48"
+  V["L2"] = "52919 0.0 0.0;8720 1.0721 6283.0758;309 0.867 12566.152;27 0.05 3.52;16 5.19 26.3;" \
+           "16 3.68 155.42;10 0.76 18849.23;9 2.06 77713.77;7 0.83 775.52;5 4.66 1577.34;4 1.03 7.11;" \
+           "4 3.44 5573.14;3 5.14 796.3;3 6.05 5507.55;3 1.19 242.73;3 6.12 529.69;3 0.31 398.15;" \
+           "3 2.28 553.57;2 4.38 5223.69;2 3.75 0.98"
+  V["L3"] = "289 5.844 6283.076;35 0.0 0.0;17 5.49 12566.15;3 5.2 155.42;1 4.72 3.52;1 5.3 18849.23;" \
+           "1 5.97 242.73"
+  V["L4"] = "114 3.142 0.0;8 4.13 6283.08;1 3.84 12566.15"
+  V["L5"] = "1 3.14 0.0"
+  V["B0"] = "280 3.199 84334.662;102 5.422 5507.553;80 3.88 5223.69;44 3.7 2352.87;32 4.0 1577.34"
+  V["B1"] = "9 3.9 5507.55;6 1.73 5223.69"
+  V["R0"] = "100013989 0.0 0.0;1670700 3.0984635 6283.07585;13956 3.05525 12566.1517;" \
+           "3084 5.1985 77713.7715;1628 1.1739 5753.3849;1576 2.8469 7860.4194;925 5.453 11506.77;" \
+           "542 4.564 3930.21;472 3.661 5884.927;346 0.964 5507.553;329 5.9 5223.694;307 0.299 5573.143;" \
+           "243 4.273 11790.629;212 5.847 1577.344;186 5.022 10977.079;175 3.012 18849.228;" \
+           "110 5.055 5486.778;98 0.89 6069.78;86 5.69 15720.84;86 1.27 161000.69;65 0.27 17260.15;" \
+           "63 0.92 529.69;57 2.01 83996.85;56 5.24 71430.7;49 3.25 2544.31;47 2.58 775.52;" \
+           "45 5.54 9437.76;43 6.01 6275.96;39 5.36 4694.0;38 2.39 8827.39;37 0.83 19651.05;" \
+           "37 4.9 12139.55;36 1.67 12036.46;35 1.84 2942.46;33 0.24 7084.9;32 0.18 5088.63;" \
+           "32 1.78 398.15;28 1.21 6286.6;28 1.9 6279.55;26 4.59 10447.39"
+  V["R1"] = "103019 1.10749 6283.07585;1721 1.0644 12566.1517;702 3.142 0.0;32 1.02 18849.23;" \
+           "31 2.84 5507.55;25 1.32 5223.69;18 1.42 1577.34;10 5.91 10977.08;9 1.42 6275.96;" \
+           "9 0.27 5486.78"
+  V["R2"] = "4359 5.7846 6283.0758;124 5.579 12566.152;12 3.14 0.0;9 3.63 77713.77;6 1.87 5573.14;" \
+           "3 5.47 18849.23"
+  V["R3"] = "145 4.273 6283.076;7 3.92 12566.15"
+  V["R4"] = "4 2.56 6283.08"
+  # Jupiter (J) and Saturn (S), VSOP87D from IMCCE (ftp.imcce.fr/pub/ephem/planets/vsop87): every
+  # term whose amplitude, times a tenth for each power of time, is 1e-5 or more; amplitudes x 1e8
+  V["JL0"] = "59954691 0 0;9695899 5.061918 529.690965;573610 1.444062 7.113547;" \
+           "306389 5.417347 1059.38193;97178 4.142647 632.783739;72903 3.640429 522.577418;" \
+           "64264 3.411452 103.092774;39806 2.293767 419.484644;38858 1.272317 316.39187;" \
+           "27965 1.784546 536.804512;13590 5.77481 1589.072895;8769 3.630003 949.175609;" \
+           "8246 3.58228 206.185548;7368 5.081011 735.876514;6263 0.024976 213.299095;" \
+           "6114 4.513195 1162.474704;5305 4.186251 1052.268383;5305 1.306712 14.227094;" \
+           "4905 1.320846 110.206321;4647 4.699581 3.932153;3045 4.31676 426.598191;" \
+           "2610 1.566676 846.082835;2028 1.063765 3.181394;1921 0.971689 639.897286;" \
+           "1765 2.141481 1066.495477;1723 3.88036 1265.567479;1633 3.582011 515.463871;" \
+           "1432 4.296837 625.670192"
+  V["JL1"] = "52993480757 0 0;489741 4.220667 529.690965;228919 6.026475 7.113547;" \
+           "27655 4.57266 1059.38193;20721 5.459389 522.577418;12106 0.169858 536.804512"
+  V["JB0"] = "2268616 3.558526 529.690965;110090 0 0;109972 3.908093 1059.38193;8101 3.605096 522.577418;" \
+           "6438 0.306271 536.804512;6044 4.258831 1589.072895;1107 2.985344 1162.474704"
+  V["JB1"] = "177352 5.701665 529.690965"
+  V["JR0"] = "520887429 0 0;25209327 3.491086 529.690965;610600 3.841154 1059.38193;" \
+           "282029 2.574199 632.783739;187647 2.075904 522.577418;86793 0.710011 419.484644;" \
+           "72063 0.214657 536.804512;65517 5.979959 316.39187;30135 2.161321 949.175609;" \
+           "29135 1.677592 103.092774;23947 0.274579 7.113547;23453 3.540231 735.876514;" \
+           "22284 4.193628 1589.072895;13033 2.960431 1162.474704;12749 2.715501 1052.268383;" \
+           "9703 1.906696 206.185548;9161 4.413526 213.299095;7895 2.479076 426.598191;" \
+           "7058 2.181848 1265.567479;6138 6.264175 846.082835;5477 5.657293 639.897286;" \
+           "4170 2.01605 515.463871;4137 2.7222 625.670192;3503 0.565313 1066.495477;" \
+           "2617 2.00994 1581.959348;2500 4.551821 838.969288;2128 6.127515 742.990061;" \
+           "1912 0.856219 412.371097;1611 3.088678 1368.660253;1479 2.680262 1478.866574;" \
+           "1231 1.89043 323.505417;1217 1.801716 110.206321;1015 1.386732 454.909367"
+  V["JR1"] = "1271802 2.649375 529.690965;61662 3.000763 1059.38193;53444 3.897176 522.577418;41390 0 0;" \
+           "31185 4.882767 536.804512;11847 2.413296 419.484644"
+  V["SL0"] = "87401354 0 0;11107660 3.962051 213.299095;1414151 4.585815 7.113547;" \
+           "398379 0.52112 206.185548;350769 3.303299 426.598191;206816 0.246584 103.092774;" \
+           "79271 3.840071 220.412642;23990 4.669769 110.206321;16574 0.437191 419.484644;" \
+           "15820 0.93809 632.783739;15054 2.7167 639.897286;14907 5.769033 316.39187;" \
+           "14610 1.565186 3.932153;13160 4.448912 14.227094;13005 5.981191 11.0457;" \
+           "10725 3.129396 202.253395;6126 1.763285 277.034994;5863 0.23657 529.690965;" \
+           "5228 4.207832 3.181394;5020 3.177879 433.711738;4593 0.619764 199.072001;" \
+           "4006 2.244799 63.735898;3874 3.222827 138.517497;3269 0.774919 949.175609;" \
+           "2954 0.982804 95.979227;2461 2.031636 735.876514;1758 3.265805 522.577418;" \
+           "1640 5.50505 846.082835;1581 4.372663 309.278323;1391 4.02332 323.505417;" \
+           "1124 2.837268 415.552491;1087 4.183432 2.447681;1017 3.716982 227.526189"
+  V["SL1"] = "21354295596 0 0;1296855 1.828205 213.299095;564348 2.885001 7.113547;" \
+           "107679 2.277699 206.185548;98323 1.080701 426.598191;40255 2.041283 220.412642;" \
+           "19942 1.279547 103.092774;10512 2.748804 14.227094"
+  V["SL2"] = "116441 1.179879 7.113547"
+  V["SB0"] = "4330678 3.602844 213.299095;240348 2.852385 426.598191;84746 0 0;34116 0.572973 206.185548;" \
+           "30863 3.484415 220.412642;14734 2.118466 639.897286;9917 5.790032 419.484644;" \
+           "6994 4.736047 7.113547;4808 5.433053 316.39187;4788 4.965129 110.206321;" \
+           "3432 2.732558 433.711738;1506 6.013045 103.092774;1060 5.630993 529.690965"
+  V["SB1"] = "397555 5.3329 213.299095;49479 3.141593 0;18572 6.099192 426.598191;" \
+           "14801 2.305861 206.185548"
+  V["SR0"] = "955758136 0 0;52921382 2.392262 213.299095;1873680 5.235496 206.185548;" \
+           "1464664 1.64763 426.598191;821891 5.9352 316.39187;547507 5.015326 103.092774;" \
+           "371684 2.271148 220.412642;361778 3.139043 7.113547;140618 5.704067 632.783739;" \
+           "108975 3.293136 110.206321;69007 5.940996 419.484644;61053 0.940378 639.897286;" \
+           "48913 1.557334 202.253395;34144 0.195186 277.034994;32402 5.470846 949.175609;" \
+           "20937 0.463492 735.876514;20839 1.521026 433.711738;20747 5.332557 199.072001;" \
+           "15298 3.059437 529.690965;14296 2.604335 323.505417;12884 1.648923 138.517497;" \
+           "11993 5.980514 846.082835;11380 1.731057 522.577418;9796 5.204759 1265.567479;" \
+           "7753 5.851913 95.979227;6771 3.004335 14.227094;6466 0.177332 1052.268383;" \
+           "5850 1.455196 415.552491;5307 0.597375 63.735898;4696 2.14919 227.526189;" \
+           "4044 1.640103 209.366942;3688 0.780161 412.371097;3461 1.850888 175.16606;" \
+           "3420 4.945491 1581.959348;3401 0.553867 350.33212;3376 3.695285 224.344796;" \
+           "2976 5.684679 210.117702;2885 1.387641 838.969288;2881 0.179608 853.196382;" \
+           "2508 3.538519 742.990061;2448 6.184124 1368.660253;2406 2.965592 117.319868;" \
+           "2174 0.015086 340.770892;2024 5.054113 11.0457;1888 0.029684 3.932153;" \
+           "1861 5.933616 625.670192;1817 5.777132 490.334089;1781 0.763144 217.231249;" \
+           "1740 2.34657 309.278323;1611 1.173025 74.781599;1475 5.676705 203.737868;" \
+           "1472 1.400649 137.033024;1463 1.925881 216.480489;1395 5.936694 127.471797;" \
+           "1315 5.112026 211.814623;1304 0.772356 647.010833;1296 4.691841 1898.351218;" \
+           "1277 2.984126 1059.38193;1207 0.752859 351.816592;1150 5.740212 1162.474704;" \
+           "1127 4.467078 265.989293;1099 1.817651 149.563197;1071 1.135673 1155.361157;" \
+           "1021 5.912335 1685.052123"
+  V["SR1"] = "6182981 0.258435 213.299095;506578 0.711147 206.185548;341394 5.796358 426.598191;" \
+           "188491 0.472157 220.412642;186262 3.141593 0;143891 1.407449 7.113547;" \
+           "49621 6.017445 103.092774;20928 5.092457 639.897286;19953 1.175601 419.484644;" \
+           "18840 1.608196 110.206321;13877 0.758862 199.072001;12893 5.943303 433.711738"
+  V["SR2"] = "436902 4.786717 213.299095"
+  NA = split(TA, rows, ";")
+  for (i = 1; i <= NA; i++) {
+    split(rows[i], f, " "); AD[i] = f[1]; AM[i] = f[2]; AMp[i] = f[3]; AF[i] = f[4]; AL[i] = f[5]; AR[i] = f[6]
+    AE[i] = AM[i] < 0 ? -AM[i] : AM[i]                  # the power of E the term takes
+  }
+  NB = split(TB, rows, ";")
+  for (i = 1; i <= NB; i++) {
+    split(rows[i], f, " "); BD[i] = f[1]; BM[i] = f[2]; BMp[i] = f[3]; BF[i] = f[4]; BB[i] = f[5]
+    BE[i] = BM[i] < 0 ? -BM[i] : BM[i]
+  }
+  for (name in V) {
+    VN[name] = split(V[name], rows, ";")
+    for (i = 1; i <= VN[name]; i++) { split(rows[i], f, " "); VA[name, i] = f[1]; VB[name, i] = f[2]; VC[name, i] = f[3] }
+  }
+
+  off = (substr(Z, 1, 1) == "-" ? -1 : 1) * (substr(Z, 2, 2) * 3600 + substr(Z, 4, 2) * 60)
+  today = floor((NOW + off) / 86400)                    # the local date, in days since 1970
+
+  # ---- the planetary day: from its sunrise; its 24 unequal hours
+  r = sunalt(today, -0.833, 1)
+  pd = (r >= 0 && r <= NOW) ? today : today - 1
+  r = sunalt(pd, -0.833, 1); s = sunalt(pd, -0.833, 0); r2 = sunalt(pd + 1, -0.833, 1)
+  out("n", "today", today)
+  if (r < 0 || s < 0 || r2 < 0) {
+    # the Sun doesn't rise or set (the polar night or day): no unequal hours, nor a tide from
+    # sunrise; the day is the civil day, under its ruler, and the rest is as ever
+    out("n", "polar", 1); out("n", "pday", today); out("n", "wday", fmod(today + 4, 7))
+  } else {
+    for (h = 0; h < 12; h++) { b[h] = r + h * (s - r) / 12; b[h + 12] = s + h * (r2 - s) / 12 }
+    b[24] = r2
+    for (cur = 0; cur < 23 && NOW >= b[cur + 1]; cur++) ;
+    out("n", "pday", pd); out("n", "wday", fmod(pd + 4, 7)); out("n", "hour", cur)
+    for (h = 0; h <= 24; h++) outt("b" h, b[h])
+    # the tattva tide (the Golden Dawn's "The Tattwas of the Eastern School", in Regardie): from
+    # sunrise Akasa, Vayu, Tejas, Apas, Prithivi, "each remaining one Ghari" (24 minutes), the round
+    # of five in two hours, again and again until the next sunrise
+    k = int((NOW - b[0]) / 1440); e = b[0] + (k + 1) * 1440
+    out("n", "tattva", k % 5); out("n", "tattva_next", e < b[24] ? (k + 1) % 5 : 0); outt("tattva_end", e < b[24] ? e : b[24])
+  }
+
+  # ---- the Sun on the local date: rise, set, noon, twilights, blue and golden hour
+  split("m18 -18 1|m12 -12 1|m8 -8 1|m6 -6 1|m4 -4 1|rise -0.833 1|mp6 6 1|" \
+        "ep6 6 0|set -0.833 0|e4 -4 0|e6 -6 0|e8 -8 0|e12 -12 0|e18 -18 0", EV, "|")
+  for (i = 1; i in EV; i++) { split(EV[i], f, " "); T_[f[1]] = sunalt(today, f[2], f[3]); outt(f[1], T_[f[1]]) }
+  if (T_["rise"] >= 0) { sun(T_["rise"]); altaz(T_["rise"], SRA, SDEC); out("n", "riseaz", AZ) }
+  if (T_["set"] >= 0) { sun(T_["set"]); altaz(T_["set"], SRA, SDEC); out("n", "setaz", AZ) }
+  t = transit(today, 0); outt("noon", t); sun(t); altaz(t, SRA, SDEC); out("n", "noonalt", ALT)
+  outt("midnight", transit(today, 1))
+  r = sunalt(today - 1, -0.833, 1); s = sunalt(today - 1, -0.833, 0)
+  if (T_["rise"] >= 0 && T_["set"] >= 0) out("n", "daylen", T_["set"] - T_["rise"])
+  if (r >= 0 && s >= 0) out("n", "daylen0", s - r)
+  sun(NOW); altaz(NOW, SRA, SDEC); out("n", "sunalt", ALT); out("n", "sunaz", AZ); out("n", "eot", SE)
+  LS = fmod(SL - zshift(NOW), 360); out("n", "sunlon", LS); TROP = SL
+
+  # ---- the decan: when the Sun entered it, when it enters the next
+  dec = int(LS / 10)
+  out("n", "decan", dec)
+  outt("decan_in", sunreach(dec * 10, NOW - 15 * 86400, NOW, 0))
+  outt("decan_next", sunreach(fmod((dec + 1) * 10, 360), NOW, NOW + 15 * 86400, 0))
+
+  # ---- the season: the next equinox or solstice (always tropical), and the last one when it
+  # was under a day and a bit ago (the Sun moves under 1.1 degrees in that time)
+  q = int(TROP / 90); out("n", "season", q)
+  outt("season_next", sunreach(fmod((q + 1) * 90, 360), NOW, NOW + 100 * 86400, 1))
+  outt("season_in", TROP - 90 * q < 1.1 ? sunreach(90 * q, NOW - 2 * 86400, NOW, 1) : -1)
+
+  # ---- the five planets: longitude, daily motion, and whether the motion turns within a day
+  split("Saturn Jupiter Mars Venus Mercury", PL, " ")
+  for (i = 1; i <= 5; i++) {
+    l0 = plon(PL[i], NOW - 86400); l1 = plon(PL[i], NOW); l2 = plon(PL[i], NOW + 86400)
+    m1 = wrap(l1 - l0); m2 = wrap(l2 - l1)
+    out("n", PL[i] "_lon", fmod(l1 - zshift(NOW), 360)); out("n", PL[i] "_mot", m2)
+    out("n", PL[i] "_sta", (m1 < 0) != (m2 < 0))
+  }
+
+  # ---- the Moon now: where, how lit, waxing or waning
+  phase(NOW); out("n", "moonlon", fmod(ML - zshift(NOW), 360)); out("n", "elong", ELONG)
+  out("n", "illum", ILLUM); out("n", "dist", MD)
+  altaz(NOW, MRA, MDEC); out("n", "moonalt", ALT - MPAR * cos(rad(ALT))); out("n", "moonaz", AZ)   # (seen from here)
+
+  # ---- the Moon's sign: when it came in, when it goes on to the next; void of course from its last
+  # exact aspect in the sign (conjunction, sextile, square, trine or opposition) to the Sun or a
+  # planet, Mercury to Saturn, until it leaves the sign; with no aspect in it, the whole sign. The
+  # Moon is faster than all of them, so its distance from each only grows: an aspect is where that
+  # passes a multiple of 60 or 90, found on a three-hour scan and halved down to a few seconds
+  m0 = int(fmod(ML - zshift(NOW), 360) / 30)
+  mi = mreach(fmod((m0 + 1) * 30, 360), NOW, 1); mo = mreach(m0 * 30, NOW, 0)
+  out("n", "moon_next", (m0 + 1) % 12); outt("moon_in", mi)
+  split("Sun Mercury Venus Mars Jupiter Saturn", BOD, " "); split("0 60 90 120 180 240 270 300", ASP, " ")
+  voc = mo; vb = va = 0
+  n = int((mi - mo) / 10800) + 1
+  for (k = 0; k <= n; k++) {                     # the scan: the Moon and the six, every 3 hours
+    st[k] = k < n ? mo + k * 10800 : mi; moon(st[k]); sm[k] = ML
+    for (j = 1; j <= 6; j++) sb[k, j] = blon(BOD[j], st[k])
+  }
+  for (k = 1; k <= n; k++)
+    for (j = 1; j <= 6; j++)
+      for (a = 1; a <= 8; a++) {
+        d1 = wrap(sm[k - 1] - sb[k - 1, j] - ASP[a]); d2 = wrap(sm[k] - sb[k, j] - ASP[a])
+        if (d1 < 0 && d2 >= 0 && d2 - d1 < 90 && (t = aspect(j, ASP[a], st[k - 1], st[k])) > voc) { voc = t; vb = j; va = ASP[a] }
+      }
+  outt("voc", voc); out("n", "voc_body", vb); out("n", "voc_asp", va)
+
+  # ---- the next four quarters, and the last new moon (for the age)
+  e0 = ELONG; t1 = NOW; u1 = e0; n = 0
+  for (k = 1; k <= 40 && n < 4; k++) {
+    t2 = NOW + k * 86400; phase(t2); u2 = u1 + fmod(ELONG - fmod(u1, 360), 360)
+    while (n < 4 && u2 >= (bnd = (int(e0 / 90) + n + 1) * 90)) {
+      n++; out("n", "q" n, fmod(bnd, 360) / 90); outt("qt" n, moonreach(fmod(bnd, 360), t1, t2))
+    }
+    t1 = t2; u1 = u2
+  }
+  # the last new moon: back a day at a time until the elongation turns over, then halved down
+  # (a month's span would hold the full moon too, where the halving can lose its way)
+  t2 = NOW; u1 = e0
+  for (k = 1; k <= 31; k++) { t1 = NOW - k * 86400; phase(t1); if (ELONG > u1) break; u1 = ELONG; t2 = t1 }
+  outt("newprev", moonreach(0, t1, t2))
+  pb = int(e0 / 90) * 90; out("n", "qp", pb / 90); outt("qprev", moonreach(pb, NOW - 9 * 86400, NOW))
+
+  # ---- perigee and apogee: the next of each, a twice-daily scan from half a day back (so one in
+  # the next hours isn't missed) over 33 days, refined; one already past is let go
+  for (k = 0; k <= 66; k++) { moon(NOW + (k - 1) * 43200); dd[k] = MD }
+  gotp = gota = 0
+  for (k = 1; k < 66 && !(gotp && gota); k++) {
+    t1 = NOW + (k - 2) * 43200; t2 = NOW + k * 43200
+    if (!gotp && dd[k] < dd[k - 1] && dd[k] <= dd[k + 1] && apsis(t1, t2, 1) >= NOW) { gotp = 1; outt("perigee", APT); out("n", "perigee_km", APKM) }
+    if (!gota && dd[k] > dd[k - 1] && dd[k] >= dd[k + 1] && apsis(t1, t2, -1) >= NOW) { gota = 1; outt("apogee", APT); out("n", "apogee_km", APKM) }
+  }
+
+  # ---- moonrise and moonset on the local date (20-minute scan, then bisection)
+  mr = ms = -1; t1 = D0; f1 = moonup(t1)
+  for (t2 = D0 + 1200; t1 < D1; t2 += 1200) {
+    if (t2 > D1) t2 = D1
+    f2 = moonup(t2)
+    if (f1 < 0 && f2 >= 0 && mr < 0) mr = moonx(t1, t2, 1)
+    if (f1 >= 0 && f2 < 0 && ms < 0) ms = moonx(t1, t2, 0)
+    t1 = t2; f1 = f2
+  }
+  outt("moonrise", mr); outt("moonset", ms)
+}
+# the Moon's longitude in the zodiac (the chosen frame)
+function moonlon(t) { moon(t); return fmod(ML - zshift(t), 360) }
+# when the Moon reaches longitude b (zodiac frame): the first time after t (later 1), or the last
+# time before it (later 0); it moves 11 to 15 degrees a day, so a sign takes under three days
+function mreach(b, t, later,   ta, tb, i, m) {
+  ta = tb = t
+  for (i = 0; i < 16; i++) {
+    if (later) { ta = tb; tb = ta + 21600; if (wrap(moonlon(tb) - b) >= 0) break }
+    else { tb = ta; ta = tb - 21600; if (wrap(moonlon(ta) - b) < 0) break }
+  }
+  while (tb - ta > 1) { m = (ta + tb) / 2; if (wrap(moonlon(m) - b) < 0) ta = m; else tb = m }
+  return (ta + tb) / 2
+}
+# the longitude of the Sun or a planet at t (of date)
+function blon(name, t) { if (name == "Sun") { sun(t); return SL } return plon(name, t) }
+# when, between ta and tb, the Moon stands asp degrees on from body j (an aspect, exact)
+function aspect(j, asp, ta, tb,   m) {
+  while (tb - ta > 5) {
+    m = (ta + tb) / 2; moon(m)
+    if (wrap(ML - blon(BOD[j], m) - asp) < 0) ta = m; else tb = m
+  }
+  return (ta + tb) / 2
+}
+# the time between ta and tb where the distance of the Moon is least (s 1) or greatest (s -1):
+# APT, and the distance then, APKM
+function apsis(ta, tb, s,   m1, m2, d1, d2) {
+  while (tb - ta > 60) {
+    m1 = ta + (tb - ta) / 3; m2 = tb - (tb - ta) / 3
+    moon(m1); d1 = MD * s; moon(m2); d2 = MD * s
+    if (d1 < d2) tb = m2; else ta = m1
+  }
+  APT = (ta + tb) / 2; moon(APT); APKM = MD
+  return APT
+}
+# the moment between ta and tb where the Moon crosses its rising altitude, going up (up 1) or down
+function moonx(ta, tb, up,   m) {
+  while (tb - ta > 1) {
+    m = (ta + tb) / 2
+    if ((moonup(m) >= 0) == (up == 1)) tb = m; else ta = m
+  }
+  return (ta + tb) / 2
+}
+AWK
+)")
+case $SKY in
+  '') echo "planhour: awk failed" >&2; exit 1 ;;
+esac
+# every time to local time in one date(1) call, rounded to the minute
+TIMES=$(printf '%s\n' "$SKY" | awk '$1 == "t" && $3 >= 0 { print "@" ($3 + 30) }' | date -f - '+f %H:%M %a %-d %b %Y%m%d')
+printf '%s\n%s\n' "$SKY" "$TIMES" | W_CITY=$CITY W_ELEV=$ELEV W_TZ=$TZNAME W_AIR=$AIR awk -v MODE="$MODE" -v NOW="$NOW" \
+  -v LAT="$LAT" -v LON="$LON" -v HLAT="$HLAT" -v HLON="$HLON" -v ZOD="$ZODIAC" \
+  -v PLACE="$PLACE" -v ZONE="$ZONE" -v HERE="$(date -d "@$NOW" +%H:%M)" -v OFF="$(date -d "@$NOW" +%z)" \
+  -v ABBR="$(date -d "@$NOW" +%Z)" \
+  -v TODAY="$(date -d "@$NOW" +%Y%m%d)" -v TOMORROW="$(date -d "@$((NOON + 86400))" +%Y%m%d)" \
+  -v YESTERDAY="$(date -d "@$((NOON - 86400))" +%Y%m%d)" "$(cat <<'AWK'
+# render: the sky's numbers as one line (MODE line), the raw values (raw) or the clock's
+# popup (panel, Pango markup for rofi). Reads "n KEY VALUE", "t KEY SECONDS" and, for every
+# time, "f HH:MM DOW DAY MON YYYYMMDD" in the same order, from date(1).
+function floor(x) { return x == int(x) || x >= 0 ? int(x) : int(x) - 1 }
+function the(p) { return p == "Sun" || p == "Moon" ? "the " p : p }
+function col(c, s) { return "<span foreground=\x27" c "\x27>" s "</span>" }
+function pc(p, s) { return col(C[p], s) }
+function dim(s) { return col("#9A8683", s) }          # the theme's dim, a step lighter (5.6:1)
+function gold(s) { return col("#F7B922", s) }
+function sp(n,   s) { s = ""; while (n-- > 0) s = s " "; return s }
+# visible width: tags dropped, every UTF-8 character counted once
+function vlen(s,   n) { gsub(/<[^>]*>/, "", s); n = length(s); return n - gsub(/[\200-\277]/, "", s) }
+function pad(s, w) { return s sp(w - vlen(s)) }
+function has(k) { return (k in T) && T[k] >= 0 }
+function hm(k) { return has(k) ? substr(F[k], 1, 5) : "-" }
+# a date as a word where one fits: "today", "tomorrow", "yesterday", else "Mon 26 Oct"
+function day(k,   a) {
+  split(F[k], a, " ")
+  return a[5] == TODAY ? "today" : a[5] == TOMORROW ? "tomorrow" : a[5] == YESTERDAY ? "yesterday" : a[2] " " a[3] " " a[4]
+}
+function when(k) { return has(k) ? day(k) " " substr(F[k], 1, 5) : "-" }     # "today 18:12"
+function ymd(k,   a) { split(F[k], a, " "); return a[5] }
+function at(lon,    s, d, m) {                      # 23 degrees 59 minutes Libra
+  s = int(lon / 30); d = lon - 30 * s; m = int((d - int(d)) * 60)
+  return sprintf("%d\xc2\xb0%02d\xe2\x80\xb2 %s", int(d), m, SIGN[s + 1])
+}
+function dsign(lon,   s) { s = int(lon / 30); return sprintf("%d\xc2\xb0 %s", int(lon - 30 * s), SIGN[s + 1]) }
+function hmin(sec,   h, m) { sec = int(sec + 0.5); h = int(sec / 3600); m = int((sec - 3600 * h) / 60); return h "h " sprintf("%02d", m) "m" }
+function mins(sec,   a, m, s) { a = sec < 0 ? -sec : sec; a = int(a + 0.5); m = int(a / 60); s = a - 60 * m; return (m ? m "m " : "") s "s" }
+function km(x,   s, r) {                            # 403,517
+  s = sprintf("%d", x + 0.5); r = ""
+  while (length(s) > 3) { r = "," substr(s, length(s) - 2) r; s = substr(s, 1, length(s) - 3) }
+  return s r
+}
+# where a body is now: its height in whole degrees, "high" or "below" (the horizon), and where:
+# "29 degrees high, SE", "19 degrees below, W"
+function sky(alt, az,   a) {
+  a = int((alt < 0 ? -alt : alt) + 0.5)
+  return a "\xc2\xb0" dim((alt < 0 && a > 0 ? " below, " : " high, ") compass(az))
+}
+function compass(az) { return CP[int(fmod(az + 11.25, 360) / 22.5) + 1] }
+function fmod(a, b) { return a - b * floor(a / b) }
+function decname(i,   s) { s = int(i / 3); return SIGN[s + 1] " " (i % 3 == 0 ? "I" : i % 3 == 1 ? "II" : "III") }
+function card(i,   s) { s = int(i / 3); return (2 + 3 * (s % 3) + i % 3) " of " SUIT[s % 4 + 1] }
+function cell(h,    t, p) {                         # one hour in the table: its start and ruler
+  t = hm("b" h); p = CH[(DR + h) % 7 + 1]
+  if (h < CUR) return dim(t " " p)
+  if (h > CUR) return t " " pc(p, p)
+  return "<b>" gold(t) " " pc(p, p) "</b>"
+}
+function label(s) { return dim(pad(s, L)) }         # a section's name, in the label column
+# essential dignity of planet p in sign s (0 Aries .. 11 Pisces): Ptolemy's houses and exaltations
+function dignity(p, s,   r) {
+  if (index(" " DOM[p] " ", " " s " ")) r = "in its own sign"
+  if (EXA[p] == s) r = (r == "" ? "" : r " and ") "exalted"
+  if (index(" " DOM[p] " ", " " (s + 6) % 12 " ")) r = "in its detriment"
+  if ((EXA[p] + 6) % 12 == s) r = (r == "" ? "in its fall" : r " and fall")
+  return r
+}
+# a planet and the Sun, d degrees apart, as Lilly has it (Christian Astrology, 1647): within 17'
+# cazimi, in the heart of the Sun, a strength; within 8 degrees 30' combust; within 17 degrees
+# under the beams (older authors give 15)
+function beams(d) {
+  d = fmod(d + 180, 360) - 180; if (d < 0) d = -d
+  return d <= 17 / 60 ? "cazimi" : d <= 8.5 ? "combust" : d <= 17 ? "under the beams" : ""
+}
+# s, then part after a comma; a part that would run past the 78th column starts a new line
+function also(s, part,   l, i) {
+  if (part == "") return s
+  l = s; while ((i = index(l, "\n")) > 0) l = substr(l, i + 1)
+  return vlen(l) + 2 + vlen(part) > 78 ? s dim(",") "\n" sp(L) part : s dim(", ") part
+}
+# the Hebrew calendar, as in Reingold and Dershowitz, Calendrical Calculations (days are R.D.:
+# 1 is 1 January of the year 1; months from 1 Nisan to 12 Adar, 13 Adar II in a leap year)
+function hleap(y) { return (7 * y + 1) % 19 < 7 }
+function helapsed(y,   m, d) {
+  m = int((235 * y - 234) / 19); d = 29 * m + int((12084 + 13753 * m) / 25920)
+  return (3 * (d + 1)) % 7 < 3 ? d + 1 : d
+}
+function hnewyear(y,   a, b, c) {                 # 1 Tishrei of year y
+  a = helapsed(y - 1); b = helapsed(y); c = helapsed(y + 1)
+  return -1373427 + b + (c - b == 356 ? 2 : b - a == 382 ? 1 : 0)
+}
+function hmonthlen(m, y,   n) {
+  if (m == 2 || m == 4 || m == 6 || m == 10 || m == 13 || (m == 12 && !hleap(y))) return 29
+  n = hnewyear(y + 1) - hnewyear(y)
+  if (m == 8) return n % 10 == 5 ? 30 : 29        # Cheshvan is long in years of 355 and 385 days
+  if (m == 9) return n % 10 == 3 ? 29 : 30        # Kislev is short in years of 353 and 383 days
+  return 30
+}
+function hfirst(y, m,   r, i) {                   # the day of the 1st of month m in year y
+  r = hnewyear(y)
+  if (m < 7) { for (i = 7; i <= 12 + hleap(y); i++) r += hmonthlen(i, y); for (i = 1; i < m; i++) r += hmonthlen(i, y) }
+  else for (i = 7; i < m; i++) r += hmonthlen(i, y)
+  return r
+}
+function hebrew(rd,   y, m) {                     # sets HY HM HD
+  for (y = int((rd + 1373427) / 365.25) + 1; hnewyear(y) > rd; y--) ;
+  while (hnewyear(y + 1) <= rd) y++
+  for (m = rd < hfirst(y, 1) ? 7 : 1; rd >= hfirst(y, m) + hmonthlen(m, y); m++) ;
+  HY = y; HM = m; HD = rd - hfirst(y, m) + 1
+}
+BEGIN {
+  split("Saturn Jupiter Mars Sun Venus Mercury Moon", CH, " ")       # the Chaldean order
+  split("Sun Moon Mercury Venus Mars Jupiter Saturn", SEVEN, " ")   # the order of the Planets line
+  split("\xe2\x99\x84 \xe2\x99\x83 \xe2\x99\x82 \xe2\x98\x89 \xe2\x99\x80 \xe2\x98\xbf \xe2\x98\xbd", GL, " ")
+  # the King scale (the path colours of the Golden Dawn Minutum Mundum), lifted to read on the
+  # dark panel: every colour here keeps at least 5:1 contrast against it
+  split("#7C7FE8 #A970D7 #F4604D #FF8A3D #5DB8A6 #F7B922 #6FA8F0", K, " ")
+  for (i = 1; i <= 7; i++) { C[CH[i]] = K[i]; G[CH[i]] = GL[i] }
+  split("Aries Taurus Gemini Cancer Leo Virgo Libra Scorpio Sagittarius Capricorn Aquarius Pisces", SIGN, " ")
+  split("Sunday Monday Tuesday Wednesday Thursday Friday Saturday", WD, " ")
+  split("4 7 3 6 2 5 1", RUL, " ")             # the ruler of each weekday, as a place in CH
+  split("Wands Pentacles Swords Cups", SUIT, " ")              # fire, earth, air, water
+  split("N NNE NE ENE E ESE SE SSE S SSW SW WSW W WNW NW NNW", CP, " ")
+  split("new moon|first quarter|full moon|last quarter", QN, "|")
+  # Book T titles of the 36 decans, Aries to Pisces, three per sign
+  split("Dominion|Established Strength|Perfected Work|" \
+        "Material Trouble|Material Success|Success Unfulfilled|" \
+        "Shortened Force|Despair and Cruelty|Ruin|" \
+        "Love|Abundance|Blended Pleasure|" \
+        "Strife|Victory|Valour|" \
+        "Prudence|Material Gain|Wealth|" \
+        "Peace Restored|Sorrow|Rest from Strife|" \
+        "Loss in Pleasure|Pleasure|Illusionary Success|" \
+        "Swiftness|Great Strength|Oppression|" \
+        "Harmonious Change|Material Works|Earthly Power|" \
+        "Defeat|Earned Success|Unstable Effort|" \
+        "Abandoned Success|Material Happiness|Perfected Success", TITLE, "|")
+  split("spring|summer|autumn|winter", SEASON, "|")
+  split("spring equinox|summer solstice|autumn equinox|winter solstice", EVENT, "|")
+  # the planet's Sephira on the Tree, its divine name, archangel and choir, as the Golden Dawn
+  # gives them (Regardie, The Golden Dawn; Agrippa's scales of seven and ten agree on the angels)
+  SEPH["Saturn"]  = "Binah|Understanding|YHVH Elohim|Tzaphkiel|Aralim|Thrones"
+  SEPH["Jupiter"] = "Chesed|Mercy|El|Tzadkiel|Chashmalim|Brilliant Ones"
+  SEPH["Mars"]    = "Geburah|Severity|Elohim Gibor|Khamael|Seraphim|Fiery Serpents"
+  SEPH["Sun"]     = "Tiphareth|Beauty|YHVH Eloah va-Daath|Raphael|Malachim|Kings"
+  SEPH["Venus"]   = "Netzach|Victory|YHVH Tzabaoth|Haniel|Elohim|Gods"
+  SEPH["Mercury"] = "Hod|Splendour|Elohim Tzabaoth|Michael|Beni Elohim|Sons of God"
+  SEPH["Moon"]    = "Yesod|Foundation|Shaddai El Chai|Gabriel|Kerubim|the Strong"
+  # houses (domiciles) and exaltations, signs counted from 0 Aries
+  DOM["Saturn"] = "9 10"; DOM["Jupiter"] = "8 11"; DOM["Mars"] = "0 7"; DOM["Sun"] = "4"
+  DOM["Venus"] = "1 6"; DOM["Mercury"] = "2 5"; DOM["Moon"] = "3"
+  EXA["Saturn"] = 6; EXA["Jupiter"] = 3; EXA["Mars"] = 9; EXA["Sun"] = 0
+  EXA["Venus"] = 11; EXA["Mercury"] = 5; EXA["Moon"] = 1
+  # the tattvas and their symbols, in the order of the tide
+  split("Akasa|Vayu|Tejas|Apas|Prithivi", TAT, "|")
+  split("spirit, black egg|air, blue disc|fire, red triangle|water, silver crescent|earth, yellow square", TATW, "|")
+  split("#9A8FEA #6FA8F0 #F4604D #C9C6D2 #E8C547", TATC, " ")
+  # the Moon's 28 mansions, Agrippa, Occult Philosophy II.33: name, gloss, what it serves
+  split("Alnath|the horns of Aries|discords and journeys#" \
+        "Allothaim|the belly of Aries|finding treasures, keeping captives#" \
+        "Achaomazon|showering, or the Pleiades|good for sailors, huntsmen and alchemists#" \
+        "Aldebaram|the eye or head of Taurus|ruins buildings, wells, mines; drives off creeping things; discord#" \
+        "Alchatay||return from journeys, teaching; confirms buildings; health, goodwill#" \
+        "Alhanna|the little star of great light|hunting, sieges, princes\x27 revenge; spoils harvests, hinders physicians#" \
+        "Aldimiach|the arm of Gemini|gain and friendship, good for lovers; scares flies, undoes magisteries#" \
+        "Alnaza|misty or cloudy|love, friendship, fellow travellers; drives off mice, holds captives#" \
+        "Archaam|the eye of the Lion|hinders harvests and travellers; discord between men#" \
+        "Algelioche|the neck or forehead of Leo|strengthens buildings; love, benevolence, help against enemies#" \
+        "Azobra|the hair of the Lion\x27s head|voyages, gain by merchandise, redemption of captives#" \
+        "Alzarpha|the tail of Leo|harvests and plantations; hinders seamen; betters servants, captives#" \
+        "Alhaire|the Dogstars, or the wings of Virgo|benevolence, gain, voyages, harvests, freedom of captives#" \
+        "Achureth|the spike of Virgo|married love, cures the sick, helps sailors; hinders land journeys#" \
+        "Agrapha|covered, or covered flying|treasure, divorce, discord, ruin of houses and enemies; hinders travel#" \
+        "Azubene|the horns of Scorpio|hinders journeys, wedlock, harvests, trade; redeems captives#" \
+        "Alchil|the crown of Scorpio|betters bad fortune, lasting love, strong buildings, helps seamen#" \
+        "Alchas|the heart of Scorpio|discord, sedition, revenge on enemies; frees captives, helps buildings#" \
+        "Allatha|the tail of Scorpio|sieges, taking towns, driving men out; ruin of seamen and captives#" \
+        "Abnahaya|a beam|taming beasts, strengthening prisons; brings a man to a place#" \
+        "Abeda|a desert|harvests, gain, buildings, travellers; causes divorce#" \
+        "Sadahacha|a shepherd|flight of servants and captives; curing diseases#" \
+        "Zabadola|swallowing|divorce, freeing captives, health of the sick#" \
+        "Sadabath|the star of fortune|married goodwill, victory of soldiers; hinders government#" \
+        "Sadalabra|a butterfly, or a spreading forth|sieges and revenge, destroys enemies, divorce; binds#" \
+        "Alpharg|the first drawing|union and love of men, health of captives; destroys prisons, buildings#" \
+        "Alcharya|the second drawing|harvests, revenues, gain, healing; hinders buildings, perils seamen#" \
+        "Albotham|Pisces|harvests, trade, safe travel, married joy; firm prisons, lost treasure", MANS, "#")
+  # the signs' glyphs, each with U+FE0E: as text, in the font's own colour (they are emoji too)
+  split("\xe2\x99\x88 \xe2\x99\x89 \xe2\x99\x8a \xe2\x99\x8b \xe2\x99\x8c \xe2\x99\x8d \xe2\x99\x8e \xe2\x99\x8f " \
+        "\xe2\x99\x90 \xe2\x99\x91 \xe2\x99\x92 \xe2\x99\x93", ZG, " ")
+  for (i = 1; i <= 12; i++) ZG[i] = ZG[i] "\xef\xb8\x8e"
+  # retrograde: DejaVu Sans has it at the text's own height (the font that would stand in for it,
+  # Noto Sans Mono, is taller, and drops its row a hair below the others)
+  RX = "<span font_family=\x27DejaVu Sans\x27>\xe2\x84\x9e</span>"
+  # the aspects, by the Moon's distance on from the body; the bodies it can be void after
+  ASPN[0] = "conjunction"; ASPN[60] = ASPN[300] = "sextile"; ASPN[90] = ASPN[270] = "square"
+  ASPN[120] = ASPN[240] = "trine"; ASPN[180] = "opposition"
+  split("Sun Mercury Venus Mars Jupiter Saturn", BODN, " ")
+  # the Hebrew months from Nisan, with their letters and signs (Sefer Yetzirah 5)
+  split("Nisan Iyar Sivan Tammuz Av Elul Tishrei Cheshvan Kislev Tevet Shevat Adar", HMON, " ")
+  split("Heh Vav Zayin Chet Tet Yod Lamed Nun Samekh Ayin Tzadi Qof", HLET, " ")
+  split("PM2.5 PM10 NO2 ozone", AIRN, " ")                     # the air's pollutants, as shown
+}
+$1 == "n" { N[$2] = $3; next }
+$1 == "t" { T[$2] = $3; if ($3 >= 0) Q[++nq] = $2; next }
+$1 == "f" { F[Q[++fq]] = substr($0, 3); next }
+END {
+  # (a key is asked for only where it is there: awk makes any key it's asked for, and the raw list
+  # would show it, empty)
+  WDAY = N["wday"] + 1; DR = RUL[WDAY] - 1; POLAR = ("polar" in N)
+  DAY = CH[DR + 1]; CUR = POLAR ? -1 : N["hour"]; HOUR = POLAR ? "" : CH[(DR + CUR) % 7 + 1]
+  LEFT = POLAR ? 0 : int((T["b" (CUR + 1)] - NOW + 59) / 60)
+  NOSUN = "the Sun doesn\x27t " (N["noonalt"] < 0 ? "rise" : "set") " here today"
+  dec = N["decan"]; DECR = CH[(2 + dec) % 7 + 1]; TIT = "Lord of " TITLE[dec + 1]
+  nd = (dec + 1) % 36
+  QS = N["season"]; if (LAT < 0) QS = (QS + 2) % 4            # the seasons of this hemisphere
+  if (MODE == "raw") {
+    for (k in N) printf "%s=%s\n", k, N[k]
+    for (k in T) printf "%s=%s%s\n", k, T[k], (k in F ? " (" F[k] ")" : "")
+    exit
+  }
+  if (MODE == "line") {
+    if (POLAR) printf "day of %s \xc2\xb7 no planetary hours: %s%s\n", the(DAY), NOSUN, PLACE == "" ? "" : " \xc2\xb7 " PLACE
+    else printf "day of %s \xc2\xb7 hour of %s \xc2\xb7 %d min left%s\n", the(DAY), the(HOUR), LEFT, PLACE == "" ? "" : " \xc2\xb7 " PLACE
+    exit
+  }
+  if (MODE == "bar") {
+    if (POLAR) print "- none 3600"
+    else printf "%s %s %d\n", G[HOUR], HOUR, T["b" (CUR + 1)] - NOW
+    exit
+  }
+  # ---- the popup: a label column 8 wide, then the text; the tables in columns 18 wide. Only ASCII
+  # stands before a column that has to line up: the planets' glyphs, degrees and dots come from
+  # whatever font has them, at that font's width, so they sit where nothing after them aligns
+  L = 8; CW = 18
+  S = dim("  \xc2\xb7  ")                              # between the parts of a line
+  place()
+  print ""
+  # ---- the zodiac, when it isn't the usual one
+  if (ZOD == "regulus") print label("Zodiac") "sidereal, from Regulus" dim(" at 0\xc2\xb0 Leo: the signs, decans and mansions")
+  # ---- the day (with the Hebrew date, which turns at sunset) and the hour
+  hebrew(N["today"] + 719163 + (has("set") && NOW >= T["set"]))
+  j = HM > 12 ? 12 : HM; m = HM == 12 && hleap(HY) ? "Adar I" : HM == 13 ? "Adar II" : HMON[j]
+  print label("Day") "<b>" pc(DAY, G[DAY] " " DAY) "</b>" S dim(WD[WDAY]) S HD " " m " " HY dim(" (" HLET[j] ", " SIGN[j] ")")
+  if (POLAR) print label("Hour") dim("none: the Sun doesn\x27t " (N["noonalt"] < 0 ? "rise" : "set") " today, so no unequal hours or tattva tide")
+  else hour()
+  notice()
+  print ""
+  if (!POLAR) {
+    # ---- the 24 hours in four columns: from sunrise, from true noon (where the 7th hour of the day
+    # starts, give or take a minute), from sunset, from midnight (the 7th of the night)
+    print label("Hours") dim(pad("day", 2 * CW) "night")
+    for (h = 0; h < 6; h++) print sp(L) pad(cell(h), CW) pad(cell(h + 6), CW) pad(cell(h + 12), CW) cell(h + 18)
+    print ""
+  }
+  sun_moon()
+}
+# the place (the weather's city): its name and country, its latitude and longitude, its altitude;
+# its zone, its local mean time (the clock of its longitude) and the sundial's (the true Sun: the
+# mean time and the equation of time); its air; away from home, the time there (all the times
+# below are its own; until its forecast is saved, they are your zone's) and how far it is
+function place(   c, s, z, a, d, f1, f2, x, lmt) {
+  c = ENVIRON["W_CITY"]; gsub(/&/, "\\&amp;", c); gsub(/</, "\\&lt;", c); gsub(/>/, "\\&gt;", c)
+  s = label("Place") (c == "" ? "" : "<b>" c "</b>" S) dms(LAT, "N", "S") " " dms(LON, "E", "W")
+  if (ENVIRON["W_ELEV"] != "") s = then(s, dim("altitude ") rnd(ENVIRON["W_ELEV"]) dim(" m"))
+  print s
+  a = substr(OFF, 2, 2) + 0; d = substr(OFF, 4, 2)
+  z = ENVIRON["W_TZ"]; z = (z == "" ? "" : z dim(", ")) (ABBR ~ /^[A-Z]+$/ && ABBR != "UTC" ? ABBR dim(", ") : "") \
+      "UTC" (a == 0 && d == "00" ? "" : substr(OFF, 1, 1) a (d == "00" ? "" : ":" d))
+  lmt = fmod(NOW + LON * 240, 86400)
+  print then(then(sp(L) z, dim("local mean time ") clock(lmt)), dim("sundial ") clock(lmt + N["eot"] * 60))
+  air()
+  if (PLACE == "") return
+  f1 = rad(LAT); f2 = rad(HLAT)                        # how far from home, on the great circle
+  x = sin((f2 - f1) / 2) ^ 2 + cos(f1) * cos(f2) * sin(rad(HLON - LON) / 2) ^ 2
+  print then(sp(L) (ZONE != "" ? HERE dim(" there, as are all the times below") : dim("times in your own zone until its forecast is saved")), \
+             km(2 * 6371 * atan2(sqrt(x), sqrt(1 - x))) dim(" km from home"))
+}
+# the air this hour: its quality (the European index's band, and in brackets the index; gold from
+# moderate, red from poor, and so too the pollutant that makes it), then each pollutant in
+# micrograms a cubic metre
+function air(   v, a, c, i, m, s, p) {
+  if (split(ENVIRON["W_AIR"], v, " ") < 9 || v[1] == "null") return
+  a = v[1] + 0; c = a < 40 ? "" : a < 60 ? "#F7B922" : "#F4604D"
+  s = (a < 20 ? "good" : a < 40 ? "fair" : a < 60 ? "moderate" : a < 80 ? "poor" : a < 100 ? "very poor" : "extremely poor")
+  s = sp(L) dim("air quality ") (c == "" ? s dim(" (") rnd(a) dim(")") : col(c, s " (" rnd(a) ")"))
+  m = 2; for (i = 3; i <= 5; i++) if (v[i + 4] != "null" && v[i + 4] + 0 > v[m + 4] + 0) m = i
+  p = ""
+  for (i = 2; i <= 5; i++)
+    if (v[i] != "null") p = p (p == "" ? "" : dim(", ")) (c != "" && i == m ? col(c, AIRN[i - 1] " " rnd(v[i])) : dim(AIRN[i - 1] " ") rnd(v[i]))
+  print p == "" ? s : then(s, p dim(" \xc2\xb5g/m\xc2\xb3"))
+}
+function rad(d) { return d * 3.14159265358979 / 180 }
+function rnd(x) { return sprintf("%d", x < 0 ? x - 0.5 : x + 0.5) }
+function clock(s) { s = fmod(s, 86400); return sprintf("%02d:%02d", int(s / 3600), int((s % 3600) / 60)) }
+# a latitude or longitude in degrees and minutes: 50\xc2\xb005\xe2\x80\xb2N
+function dms(x, p, n,   h, d, m) {
+  h = x < 0 ? n : p; if (x < 0) x = -x
+  d = int(x); m = int((x - d) * 60 + 0.5); if (m == 60) { d++; m = 0 }
+  return d "\xc2\xb0" sprintf("%02d", m) "\xe2\x80\xb2" h
+}
+# s, then part after a dot; a part that would run past the 78th column starts a new line
+function then(s, part,   l, i) {
+  l = s; while ((i = index(l, "\n")) > 0) l = substr(l, i + 1)
+  return vlen(l) + 5 + vlen(part) > 78 ? s "\n" sp(L) part : s S part
+}
+# the hour: its planet, where it is and how it stands, its names on the Tree; the tattva now
+function hour(   lon, g, mv, sb, f, k, n) {
+  print label("Hour") pc(HOUR, G[HOUR] " " HOUR) S LEFT dim(" min left")
+  # ---- the hour's planet: where it is and how it stands; its names on the Tree
+  lon = HOUR == "Sun" ? N["sunlon"] : HOUR == "Moon" ? N["moonlon"] : N[HOUR "_lon"]
+  g = dignity(HOUR, int(lon / 30))
+  mv = (HOUR == "Sun" || HOUR == "Moon") ? "" : N[HOUR "_sta"] ? (N[HOUR "_mot"] < 0 ? "turning retrograde" : "turning direct") : N[HOUR "_mot"] < 0 ? "retrograde" : ""
+  sb = HOUR == "Sun" ? "" : beams(lon - N["sunlon"])
+  print also(also(also(sp(L) dim("in ") dsign(lon), g), mv), sb)
+  # its Sephira, and there its names in three worlds: the divine name, the archangel, the choir
+  split(SEPH[HOUR], f, "|")
+  print sp(L) f[1] dim(", " f[2])
+  print sp(L) f[3] S f[4] S f[5] dim(", " f[6])
+  # ---- the tattva of the tide now, and the next
+  k = N["tattva"] + 1; n = N["tattva_next"] + 1
+  print label("Tattva") col(TATC[k], TAT[k]) dim(" (" TATW[k] ") until ") hm("tattva_end") S dim("then ") col(TATC[n], TAT[n])
+}
+# the notice: for a day after the Sun enters a decan, or a season, a line in gold
+function notice(   new, snew, d, same) {
+  new = NOW - T["decan_in"] < 86400; snew = has("season_in") && NOW - T["season_in"] < 86400
+  d = snew ? T["season_in"] - T["decan_in"] : 0; same = new && snew && d < 60 && d > -60     # tropical: one event
+  if (new) print sp(L) gold("the Sun entered " decname(dec) " " when("decan_in") (same ? ", the " EVENT[QS + 1] : ""))
+  if (snew && !same) print sp(L) gold("the " EVENT[QS + 1] " " when("season_in"))
+}
+# the Sun, the Moon, the seven, the decan and the season
+function sun_moon(   d, e, ph, i, r, s, x, k, f, a1, a2, v, vb, pl, p, lon, nr, dd, hh, new) {
+  new = NOW - T["decan_in"] < 86400
+  # ---- the Sun: rise, noon and set, and where; midnight; the day; where it is now; the twilights,
+  # the blue and the golden hour
+  print label("Sun") (has("rise") ? dim("rise ") hm("rise") : dim("no rise today")) (has("rise") ? dim(sprintf(", %d\xc2\xb0 %s", N["riseaz"] + 0.5, compass(N["riseaz"]))) : "") \
+        S dim("noon ") hm("noon") dim(sprintf(", %d\xc2\xb0 %s", (N["noonalt"] < 0 ? -N["noonalt"] : N["noonalt"]) + 0.5, N["noonalt"] < 0 ? "below" : "high")) \
+        S (has("set") ? dim("set ") hm("set") : dim("no set today")) (has("set") ? dim(sprintf(", %d\xc2\xb0 %s", N["setaz"] + 0.5, compass(N["setaz"]))) : "")
+  if (("daylen" in N) && ("daylen0" in N)) { d = N["daylen"] - N["daylen0"]; d = d < 0 ? int(d - 0.5) : int(d + 0.5) }
+  print sp(L) dim("midnight ") hm("midnight") \
+        (!("daylen" in N) ? "" : S dim("day ") hmin(N["daylen"]) (!("daylen0" in N) ? "" : dim(d == 0 ? ", as yesterday" : ", " mins(d) (d < 0 ? " shorter" : " longer")))) \
+        S dim("now ") sky(N["sunalt"], N["sunaz"])
+  print sp(L) dim(pad("twilight", CW) pad("morning", CW) "evening")
+  tw("astronomical", "m18", "", "e18", "")
+  tw("nautical", "m12", "", "e12", "")
+  tw("civil", "m6", "", "e6", "")
+  tw("blue hour", "m8", "m4", "e4", "e8")
+  tw("golden hour", "m4", "mp6", "ep6", "e4")
+  print ""
+  # ---- the Moon: where, its phase; rise and set, where it is now, how far; its mansion; the next
+  # quarters; the next perigee and apogee
+  e = N["elong"]; ph = ""
+  for (i = 1; i <= 4; i++) if (ymd("qt" i) == TODAY) ph = gold(QN[N["q" i] + 1] " today")
+  if (ph == "" && has("qprev") && ymd("qprev") == TODAY) ph = gold(QN[N["qp"] + 1] " today")
+  if (ph == "") ph = (e < 180 ? "waxing" : "waning") " " (e < 90 || e >= 270 ? "crescent" : "gibbous")
+  print label("Moon") dsign(N["moonlon"]) S ph S sprintf("%d%%", N["illum"] * 100 + 0.5) dim(" lit") \
+        S sprintf("%.1f", (NOW - T["newprev"]) / 86400) dim(" days old")
+  # void of course: from its last aspect in this sign (gold while it is) until it enters the next
+  v = T["voc"]; vb = N["voc_body"] + 0
+  print sp(L) (NOW >= v ? gold("void of course since " when("voc")) : dim("void of course from ") when("voc")) \
+        dim(vb ? ", after its " ASPN[N["voc_asp"] + 0] " to " the(BODN[vb]) : ", all its time in the sign")
+  print sp(L) dim("until it enters ") SIGN[N["moon_next"] + 1] " " when("moon_in")
+  r = has("moonrise") ? dim("rise ") hm("moonrise") : dim("no rise today")
+  s = has("moonset") ? dim("set ") hm("moonset") : dim("no set today")
+  if (has("moonrise") && has("moonset") && T["moonset"] < T["moonrise"]) { x = r; r = s; s = x }   # in order
+  print sp(L) r S s S dim("now ") sky(N["moonalt"], N["moonaz"]) S km(N["dist"]) dim(" km")
+  k = int(N["moonlon"] * 28 / 360) + 1; split(MANS[k], f, "|")
+  print sp(L) dim("mansion ") k " " f[1] (f[2] == "" ? "" : dim(", " f[2]))
+  print sp(L) dim(f[3])
+  for (i = 1; i <= 4; i += 2)
+    print sp(L) pad(dim(QN[N["q" i] + 1]), CW) pad(when("qt" i), CW) pad(dim(QN[N["q" (i + 1)] + 1]), CW) when("qt" (i + 1))
+  a1 = "perigee"; a2 = "apogee"; if (T["apogee"] < T["perigee"]) { a1 = "apogee"; a2 = "perigee" }
+  print sp(L) pad(dim(a1), CW) pad(when(a1), CW) pad(dim(a2), CW) when(a2)
+  print ""
+  # ---- the seven where they are: the degree and the sign; retrograde, or turning (a station) today
+  pl = ""
+  for (i = 1; i <= 7; i++) {
+    p = SEVEN[i]; lon = p == "Sun" ? N["sunlon"] : p == "Moon" ? N["moonlon"] : N[p "_lon"]
+    pl = pl (i > 1 ? "  " : "") pc(p, G[p]) " " int(lon - 30 * int(lon / 30)) "\xc2\xb0" ZG[int(lon / 30) + 1] \
+         (p == "Sun" || p == "Moon" ? "" : N[p "_sta"] ? dim(" st") : N[p "_mot"] < 0 ? " " dim(RX) : "")
+  }
+  print label("Planets") pl
+  print ""
+  # ---- the decan: the Sun in it since when (gold for a day), the next one when
+  nr = CH[(2 + nd) % 7 + 1]
+  print label("Decan") "<b>" decname(dec) "</b>" S pc(DECR, DECR) S card(dec) ", " TIT
+  print sp(L) "Sun " at(N["sunlon"]) dim(", ") (new ? gold("since " when("decan_in")) : dim("since ") when("decan_in"))
+  print sp(L) dim("next ") decname(nd) dim(", ") when("decan_next") S pc(nr, nr) S card(nd)
+  # ---- the season
+  dd = int((T["season_next"] - NOW) / 86400); hh = int((T["season_next"] - NOW) / 3600)
+  print label("Season") SEASON[QS + 1] S EVENT[(QS + 1) % 4 + 1] " " when("season_next") \
+        dim(dd >= 1 ? ", in " dd " day" (dd == 1 ? "" : "s") : ", in " hh " hour" (hh == 1 ? "" : "s"))
+}
+function tw(name, k1, k2, k3, k4) { print sp(L) pad(dim(name), CW) pad(span(k1, k2), CW) span(k3, k4) }
+# a time, or a span of two; where the Sun doesn't get that low, the span runs on through the
+# night: "until 04:52", "from 22:07"
+function span(k1, k2) {
+  if (k2 == "") return hm(k1)
+  return has(k1) && has(k2) ? hm(k1) "\xe2\x80\x93" hm(k2) : has(k2) ? dim("until ") hm(k2) : has(k1) ? dim("from ") hm(k1) : "-"
+}
+AWK
+)"

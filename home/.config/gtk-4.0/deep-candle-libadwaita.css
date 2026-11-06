@@ -1,0 +1,135 @@
+/* Deep Candle for libadwaita apps: Dino, and any other GTK4 app built on libadwaita.
+ *
+ * libadwaita ignores GTK themes by design, so ~/.themes/Deep-Candle never reaches these apps.
+ * What it does take is its own color set, re-declared after its stylesheet: this file comes in
+ * through ~/.config/gtk-4.0/gtk.css. Colors only, no widget shapes, so libadwaita updates
+ * don't break it. The variable names are libadwaita's (doc/css-variables.md in its source).
+ *
+ * Dark style: ADW_DEBUG_COLOR_SCHEME=prefer-dark in ~/.config/openbox/environment.
+ * Other GTK4 apps load this file too; Deep-Candle's own GTK4 stylesheet uses none of these names,
+ * so nothing changes there.
+ */
+
+/* Named colors: libadwaita 1.10 builds its variables from these, and apps' own stylesheets
+   still use them (Dino's chat view, its selection tints and highlights). */
+@define-color accent_bg_color #C50ED2;   /* magenta, as the theme's selections: switches, selected rows */
+@define-color accent_fg_color #FFF2E6;
+@define-color accent_color #BB90DF;      /* amethyst, accent as text: links, focus rings */
+
+@define-color window_bg_color #140C10;
+@define-color window_fg_color #DCC8AE;
+@define-color view_bg_color #180E13;
+@define-color view_fg_color #DCC8AE;
+
+@define-color headerbar_bg_color #0D0809;  /* as Openbox's titlebars and the bar */
+@define-color headerbar_fg_color #DCC8AE;
+@define-color headerbar_border_color #DCC8AE;
+@define-color headerbar_backdrop_color #0D0809;
+@define-color headerbar_shade_color rgb(0 0 0 / 36%);
+@define-color headerbar_darker_shade_color rgb(0 0 0 / 90%);
+
+@define-color sidebar_bg_color #1E1218;
+@define-color sidebar_fg_color #DCC8AE;
+@define-color sidebar_backdrop_color #1E1218;
+@define-color sidebar_border_color rgb(0 0 0 / 36%);
+@define-color sidebar_shade_color rgb(0 0 0 / 25%);
+
+@define-color secondary_sidebar_bg_color #180E13;
+@define-color secondary_sidebar_fg_color #DCC8AE;
+@define-color secondary_sidebar_backdrop_color #180E13;
+@define-color secondary_sidebar_border_color rgb(0 0 0 / 36%);
+@define-color secondary_sidebar_shade_color rgb(0 0 0 / 25%);
+
+@define-color card_bg_color rgb(255 242 230 / 5%);
+@define-color card_fg_color #DCC8AE;
+@define-color card_shade_color rgb(0 0 0 / 36%);
+
+@define-color dialog_bg_color #1E1218;
+@define-color dialog_fg_color #DCC8AE;
+
+@define-color popover_bg_color #1E1218;
+@define-color popover_fg_color #DCC8AE;
+@define-color popover_shade_color rgb(0 0 0 / 25%);
+
+@define-color thumbnail_bg_color #26171F;
+@define-color thumbnail_fg_color #DCC8AE;
+
+@define-color shade_color rgb(0 0 0 / 25%);
+@define-color scrollbar_outline_color rgb(0 0 0 / 95%);
+
+/* The same set as CSS variables, the form libadwaita documents for overriding; plus the few
+   that exist only as variables. With these, the colors stay right even if Dino starts without
+   the dark style (launched by D-Bus, say). */
+:root {
+  --accent-bg-color: #C50ED2;
+  --accent-fg-color: #FFF2E6;
+  --accent-color: #BB90DF;
+  --standalone-color-oklab: max(l, 0.85) a b;
+
+  --window-bg-color: #140C10;
+  --window-fg-color: #DCC8AE;
+  --view-bg-color: #180E13;
+  --view-fg-color: #DCC8AE;
+
+  --headerbar-bg-color: #0D0809;
+  --headerbar-fg-color: #DCC8AE;
+  --headerbar-border-color: #DCC8AE;
+  --headerbar-backdrop-color: #0D0809;
+  --headerbar-shade-color: rgb(0 0 0 / 36%);
+  --headerbar-darker-shade-color: rgb(0 0 0 / 90%);
+
+  --sidebar-bg-color: #1E1218;
+  --sidebar-fg-color: #DCC8AE;
+  --sidebar-backdrop-color: #1E1218;
+  --sidebar-border-color: rgb(0 0 0 / 36%);
+  --sidebar-shade-color: rgb(0 0 0 / 25%);
+
+  --secondary-sidebar-bg-color: #180E13;
+  --secondary-sidebar-fg-color: #DCC8AE;
+  --secondary-sidebar-backdrop-color: #180E13;
+  --secondary-sidebar-border-color: rgb(0 0 0 / 36%);
+  --secondary-sidebar-shade-color: rgb(0 0 0 / 25%);
+
+  --card-bg-color: rgb(255 242 230 / 5%);
+  --card-fg-color: #DCC8AE;
+  --card-shade-color: rgb(0 0 0 / 36%);
+
+  --dialog-bg-color: #1E1218;
+  --dialog-fg-color: #DCC8AE;
+
+  --popover-bg-color: #1E1218;
+  --popover-fg-color: #DCC8AE;
+  --popover-shade-color: rgb(0 0 0 / 25%);
+
+  --thumbnail-bg-color: #26171F;
+  --thumbnail-fg-color: #DCC8AE;
+
+  --shade-color: rgb(0 0 0 / 25%);
+  --scrollbar-outline-color: rgb(0 0 0 / 95%);
+  --active-toggle-bg-color: rgb(255 242 230 / 12%);
+  --active-toggle-fg-color: #FFF2E6;
+  --overview-bg-color: #0D0809;
+  --overview-fg-color: #DCC8AE;
+}
+
+/* Action buttons gold with dark text, as everywhere else in Deep Candle. */
+.suggested-action {
+  --accent-bg-color: #F7B922;
+  --accent-fg-color: #140C10;
+  --accent-color: #F7B922;
+}
+
+/* Dino's conversation list is the side pane: the conversation you're in marked as the current place
+   is in PCManFM-Qt, qBittorrent and Telegram, plum with its name in the clock's gold. The name is the
+   first label of the row's first line (conversation_row.ui in Dino's resources). */
+window.dino-main .sidebar row:selected,
+window.dino-main .sidebar row:selected:hover,
+window.dino-main .sidebar row:selected:focus {
+  background-color: #2B1A23;
+}
+window.dino-main .sidebar row:selected > revealer > box > box > box:first-child > label:first-child {
+  color: #F7B922;
+}
+window.dino-main .sidebar row:hover:not(:selected) {
+  background-color: #1E1218;   /* the side pane's hover */
+}

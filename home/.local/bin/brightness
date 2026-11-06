@@ -1,0 +1,21 @@
+#!/bin/sh
+# usage: brightness up | down
+# Each change shows a short notice (~/.local/bin/osd), styled like any other notification.
+# the screen's backlight: the bar's (BACKLIGHT, from ~/.local/bin/bar), else the first there is
+DEV=/sys/class/backlight/${BACKLIGHT:-}
+[ -n "${BACKLIGHT:-}" ] && [ -e "$DEV" ] || for DEV in /sys/class/backlight/*; do [ -e "$DEV" ] && break; done
+[ -e "$DEV/brightness" ] || exit 1
+MAX=$(cat "$DEV/max_brightness")
+CUR=$(cat "$DEV/actual_brightness")
+STEP=$(( MAX / 20 ))
+MIN=$(( MAX / 100 ))
+case "$1" in
+  up)   NEW=$(( CUR + STEP )) ;;
+  down) NEW=$(( CUR - STEP )) ;;
+  *) exit 1 ;;
+esac
+[ "$NEW" -gt "$MAX" ] && NEW=$MAX
+[ "$NEW" -lt "$MIN" ] && NEW=$MIN
+printf '%s' "$NEW" > "$DEV/brightness"
+PCT=$(( NEW * 100 / MAX ))
+"$(dirname "$0")/osd" brightness brightness Brightness "$PCT%" "$PCT"

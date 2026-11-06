@@ -1,0 +1,35 @@
+#!/bin/sh
+# netbar: the bar's network (module "network"), looked at every 5 s: the cable when one is plugged
+# in and connected (󰈀 wired), else the Wi-Fi in use (its name), else  offline. A click opens
+# ~/.local/bin/network. No device names written in: the Wi-Fi is whichever card is wireless.
+# Colours: the palette's (polybar-mine/colors.ini: BLUE for the icon, ALTFOREGROUND offline).
+export LC_ALL=C.UTF-8           # a name's letters counted as letters, not bytes
+COLORS="${XDG_CONFIG_HOME:-$HOME/.config}/polybar-mine/colors.ini"
+color() { sed -n "s/^$1[[:space:]]*=[[:space:]]*\(#[0-9A-Fa-f]*\).*/\1/p" "$COLORS" | head -n 1; }
+ICON=$(color BLUE) QUIET=$(color ALTFOREGROUND)
+WIFI=$(printf '\357\207\253') OFF=$(printf '\357\204\247') CABLE=$(printf '\363\260\210\200')
+MAXLEN=14   # a longer Wi-Fi name is cut, with …
+
+state() {
+  if nmcli -t -f TYPE,STATE device 2>/dev/null | grep -q '^ethernet:connected$'; then
+    printf '%%{T3}%%{F%s}%s  %%{F-}%%{T-}wired\n' "$ICON" "$CABLE"; return
+  fi
+  for d in /sys/class/net/*/wireless; do
+    [ -e "$d" ] || continue
+    d=${d%/wireless}
+    name=$(iw dev "${d##*/}" link 2>/dev/null | sed -n 's/^[[:space:]]*SSID: //p' \
+           | awk -v n="$MAXLEN" '{ if (length($0) > n) $0 = substr($0, 1, n - 1) "…"; gsub(/%\{/, "% {"); print }')
+    if [ -n "$name" ]; then
+      printf '%%{T3}%%{F%s}%s  %%{F-}%%{T-}%s\n' "$ICON" "$WIFI" "$name"; return
+    fi
+  done
+  printf '%%{T3}%%{F%s}%s  %%{F-}%%{T-}%%{F%s}offline%%{F-}\n' "$QUIET" "$OFF" "$QUIET"
+}
+
+trap 'exit 0' TERM INT HUP
+last=''
+while :; do
+  s=$(state)
+  [ "$s" = "$last" ] || { printf '%s\n' "$s"; last=$s; }
+  sleep 5
+done

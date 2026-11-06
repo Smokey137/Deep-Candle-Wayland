@@ -1,0 +1,15 @@
+#!/bin/sh
+# osd [-t MS] TAG ICON TITLE TEXT [LEVEL]: a short notice from the desktop itself (volume,
+# microphone, brightness, screenshots). It looks like any other notification: an icon, a
+# title, a line of text, and a bar when there is a LEVEL (0-100). It replaces the last
+# notice with the same TAG instead of stacking, shows for MS milliseconds (default 1500),
+# and dunst keeps it out of the history (~/.config/dunst/dunstrc.d/90-osd.conf).
+ICONS=${XDG_DATA_HOME:-$HOME/.local/share}/deep-candle/osd
+ms=1500
+if [ "$1" = -t ]; then ms=$2; shift 2; fi
+tag=$1 icon=$2 title=$3 text=$4 level=$5
+if [ -n "$level" ]; then
+  exec dunstify -a osd -u normal -t "$ms" -h "string:x-dunst-stack-tag:$tag" -h "int:value:$level" \
+       -i "$ICONS/$icon.svg" "$title" "$text"
+fi
+exec dunstify -a osd -u normal -t "$ms" -h "string:x-dunst-stack-tag:$tag" -i "$ICONS/$icon.svg" "$title" "$text"

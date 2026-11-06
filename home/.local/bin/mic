@@ -1,0 +1,44 @@
+#!/bin/sh
+# mic: microphone state for polybar (tail = true). An amethyst microphone while it's live, like
+# the bar's other icons; the candle's gold while an app records from it (the mixer, a right
+# click, says which); a dim crossed-out one while it's muted, the same dim as the muted speaker;
+# nothing if there is no microphone.
+# Event-driven: it waits on `pactl subscribe` and redraws only when a microphone, a recording or
+# the default device changes, so it costs nothing while idle.
+# Clicking the icon runs `volume mic`, the same toggle as the mic key; the wheel, `volume mic-up`
+# and `mic-down`.
+export LC_ALL=C                 # pactl answers "Mute: yes/no" in English
+# the bar's icon colour (BLUE), its dim text, the gold: from polybar-mine/colors.ini
+LIVE=$("$HOME/.local/bin/palette" BLUE '#9B59D0') MUTED=$("$HOME/.local/bin/palette" ALTFOREGROUND '#8A7470') REC=$("$HOME/.local/bin/palette" YELLOW '#F7B922')
+ON=$(printf '\357\204\260')     # microphone (Nerd Font)
+OFF=$(printf '\357\204\261')    # microphone, crossed out
+
+show() {    # the recordings counted as the mixer counts them: a client's, not paused, not a mixer's
+            # level meter, from the microphone in use
+  { pactl get-default-source; pactl list sources; pactl list source-outputs; } 2>/dev/null |
+  awk -v live="$LIVE" -v dim="$MUTED" -v gold="$REC" -v on="$ON" -v off="$OFF" '
+    function done() { if (sect == "rec" && src == me && corked == "no" && client ~ /^[0-9]+$/ && media != "Peak detect") n++; sect = "" }
+    NR == 1                                 { def = $0; next }
+    /^Source #/                             { done(); sect = "src"; idx = substr($0, 9); next }
+    /^Source Output #/                      { done(); sect = "rec"; src = corked = client = media = ""; next }
+    sect == "src" && /^\tName: /            { mine = substr($0, 8) == def; if (mine) me = idx; next }
+    sect == "src" && mine && /^\tMute: /    { mute = $2; next }
+    sect == "rec" && /^\tSource: /          { src = $2; next }
+    sect == "rec" && /^\tClient: /          { client = $2; next }
+    sect == "rec" && /^\tCorked: /          { corked = $2; next }
+    sect == "rec" && /^\t\tmedia\.name = "/ { media = substr($0, index($0, "\"") + 1); sub(/"$/, "", media); next }
+    END {
+      done()
+      if (mute == "yes")     printf "%%{F%s}%%{T3}%s %%{T-}%%{F-}\n", dim, off
+      else if (mute == "no") printf "%%{O4}%%{F%s}%%{T3}%s %%{T-}%%{F-}%%{O-4}\n", n ? gold : live, on   # narrower glyph: centered
+      else                   print ""        # no microphone, or no sound server yet
+    }'
+}
+
+while :; do
+  show
+  pactl subscribe 2>/dev/null | while read -r line; do
+    case $line in *" on source "*|*" on source-output "*|*" on server "*) show ;; esac
+  done
+  sleep 3                                   # sound server restarted or not up yet
+done

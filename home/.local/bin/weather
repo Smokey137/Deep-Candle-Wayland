@@ -1,0 +1,520 @@
+#!/bin/sh
+# weather: polybar module + "weather forecast" rofi panel (styled like the calendar).
+# Data: Open-Meteo (open-meteo.com), free, no API key, no account; finding a city uses its
+# geocoding service, and with each forecast its air quality and, once, its altitude (for the
+# hours popup: planhour reads them). Warnings for the home city: the national weather service's, as MeteoAlarm (meteoalarm.org) publishes them. Each
+# city's 6-day forecast is saved in ~/.cache/weather and fetched at most once an hour: a try
+# that fails waits for the next hour too (RETRY minutes while nothing is saved for the city),
+# and none is made while there is no network. Picking a city, "Update now" in the panel and a
+# right-click on the bar fetch at once. Opening the panel only reads what is saved, so it never
+# waits on the network; with no internet it keeps working (dimmed) until the 5 days run out.
+# With nothing to show, the bar shows a faint placeholder, never nothing: a click on it still
+# opens the panel.
+# The city picked is where you are: away from home the bar runs on its time (~/.local/bin/bar
+# starts polybar with what "weather zone" says), and with it the clock, the calendar, the
+# hours and this panel. The city's time zone comes with it from the search.
+#   weather            the bar line (icon and temperature), once (fetching first if one is due)
+#   weather bar        the bar line, redrawn every minute (polybar, tail = true)
+#   weather forecast   the panel: forecast, "Update now" and the city button
+#   weather update     fetch now (right-click on the bar)
+#   weather zone       for ~/.local/bin/bar: the city's zone and the clock's format with the
+#                      zone's name, as shell exports, when away from home; else it unsets them
+#   weather home       the home city (HOME_LAT, HOME_LON, HOME_NAME below), tab-separated: for
+#                      planhour and night, so they never read this file's text
+HOME_LAT=51.51 HOME_LON=-0.13 HOME_NAME="London, United Kingdom"   # the city it starts with
+FETCH_EVERY=60    # minutes between online updates (1 hour)
+MAX_AGE=7200      # minutes saved data may be used while offline (5 days)
+RETRY=5           # minutes between tries while nothing is saved for the city
+# warnings for places within about 10 km of the home city: MeteoAlarm's feed for the country
+# and the area's code there (see meteoalarm.org); WARN_FEED= turns them off
+WARN_FEED= WARN_AREA=
+ICONFONT="Iosevka Nerd Font"
+CACHE=${XDG_CACHE_HOME:-$HOME/.cache}/weather
+PLACES=${XDG_CONFIG_HOME:-$HOME/.config}/weather/places   # current city first, then recent ones
+WARN=$CACHE/warnings
+ULOC=${LC_ALL-}   # rofi gets the user's own locale back, so accented city names can be typed
+export LC_ALL=C
+T=$(printf '\t')
+HOME_PLACE=$HOME_LAT$T$HOME_LON$T$HOME_NAME
+mkdir -p "$CACHE" "${PLACES%/*}"
+NA=$(printf '\356\215\264')    # the bar's placeholder: n/a, from the weather icons
+NL='
+'
+
+# Split "lat<TAB>lon<TAB>name[<TAB>zone]" into LAT LON NAME ZONE; fails unless it looks like
+# that. ZONE (as Asia/Kolkata) only if this computer knows it; places saved before version 10
+# have none.
+split() {
+  case $1 in *"$T"*"$T"?*) ;; *) return 1 ;; esac
+  LAT=${1%%"$T"*}; rest=${1#*"$T"}; LON=${rest%%"$T"*}; NAME=${rest#*"$T"}; ZONE=
+  case $NAME in *"$T"*) ZONE=${NAME#*"$T"}; NAME=${NAME%%"$T"*} ;; esac
+  case $LAT in ''|*[!0-9.-]*) return 1 ;; esac
+  case $LON in ''|*[!0-9.-]*) return 1 ;; esac
+  case $ZONE in *[!A-Za-z0-9_/+-]*|/*|*..*) ZONE= ;; esac
+  [ -n "$ZONE" ] && [ ! -f "/usr/share/zoneinfo/$ZONE" ] && ZONE=
+  return 0
+}
+
+# The current city (first line of PLACES, else HOME_PLACE) and everything derived from it.
+# The place goes out rounded to a tenth of a degree (a few km): the forecast is the same,
+# the server learns less.
+place() {
+  line=
+  [ -r "$PLACES" ] && read -r line < "$PLACES"
+  split "$line" || split "$HOME_PLACE"
+  CITY=${NAME%%,*}
+  DATA=$CACHE/$LAT,$LON.json
+  AWAY=1 NEARHOME=
+  awk -v a="$LAT" -v b="$LON" -v c="$HOME_LAT" -v d="$HOME_LON" \
+    'BEGIN { exit !((a - c) ^ 2 + (b - d) ^ 2 < 0.01) }' && AWAY=
+  [ -z "$AWAY" ] && [ -n "$WARN_FEED" ] && NEARHOME=1
+  # the city's time zone: as found with the city, else as its saved forecast gives it
+  if [ -z "$ZONE" ] && [ -r "$DATA" ]; then
+    ZONE=$(sed -n 's/.*"timezone":"\([A-Za-z0-9_/+-]*\)".*/\1/p' "$DATA" | head -n 1)
+    [ -n "$ZONE" ] && [ -f "/usr/share/zoneinfo/$ZONE" ] || ZONE=
+  fi
+  # this script's own clock (the panel's "updated" time): the city's away, the system's at home
+  if [ -n "$AWAY" ] && [ -n "$ZONE" ]; then export TZ="$ZONE"; else unset TZ; fi
+  URL="https://api.open-meteo.com/v1/forecast?latitude=$(printf %.1f "$LAT")&longitude=$(printf %.1f "$LON")\
+&timezone=auto&forecast_days=6&minutely_15=precipitation,snowfall&forecast_minutely_15=24\
+&hourly=temperature_2m,apparent_temperature,weather_code,is_day,wind_speed_10m,wind_direction_10m,wind_gusts_10m\
+&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum"
+  # the air, hour by hour for 4 days from today (UT): the European index, PM2.5, PM10, NO2, ozone,
+  # and each one's own index (the highest of them is the index)
+  AIR=$CACHE/$LAT,$LON.air.json
+  # its altitude: Open-Meteo's elevation model (Copernicus, 90 m) at its own coordinates, not the
+  # tenth of a degree (the city's, as the search found them: a town, not where you are)
+  HEIGHT=$CACHE/$LAT,$LON.elevation.json
+  AIRURL="https://air-quality-api.open-meteo.com/v1/air-quality?latitude=$(printf %.1f "$LAT")&longitude=$(printf %.1f "$LON")\
+&hourly=european_aqi,pm2_5,pm10,nitrogen_dioxide,ozone,european_aqi_pm2_5,european_aqi_pm10,european_aqi_nitrogen_dioxide\
+,european_aqi_ozone&timeformat=unixtime&forecast_days=4"
+}
+
+online() {   # a default route, IPv4 or IPv6: without one there is nothing to try
+  [ -r /proc/net/route ] || return 0
+  awk '$2 == "00000000" { f = 1 } END { exit !f }' /proc/net/route ||
+    { [ -r /proc/net/ipv6_route ] &&
+      awk '$1 ~ /^0+$/ && $2 == "00" && $10 != "lo" { f = 1 } END { exit !f }' /proc/net/ipv6_route; }
+}
+
+# The home area's warnings in MeteoAlarm's feed (titles "<Colour> <Kind> Warning issued for
+# <country> - <area>"), one line each: colour, kind, onset and end in seconds (0: not given).
+warnings() {
+  awk -v AREA="$WARN_AREA" '
+  function iso(s,   t) {
+    t = mktime(substr(s, 1, 4) " " substr(s, 6, 2) " " substr(s, 9, 2) " " substr(s, 12, 2) " " \
+               substr(s, 15, 2) " " substr(s, 18, 2), 1)
+    if (match(s, /[+-][0-9][0-9]:[0-9][0-9]$/))
+      t -= (substr(s, RSTART, 1) "1") * (substr(s, RSTART + 1, 2) * 3600 + substr(s, RSTART + 4, 2) * 60)
+    return t
+  }
+  function tag(n) { return match(E, "<" n ">[^<]*</" n ">") ? substr(E, RSTART + length(n) + 2, RLENGTH - 2 * length(n) - 5) : "" }
+  /<entry>/ { E = ""; inside = 1 }
+  inside { E = E $0 }
+  /<\/entry>/ {
+    inside = 0
+    if (!index(E, "<value>" AREA "</value>")) next
+    split(tag("title"), w, " "); c = tolower(w[1])
+    if (c != "yellow" && c != "orange" && c != "red") next
+    k = tag("title"); sub(/^[A-Za-z]+ /, "", k); sub(/ Warning issued for .*/, "", k)
+    gsub(/&lt;/, "<", k); gsub(/&gt;/, ">", k); gsub(/&quot;/, "\"", k); gsub(/&apos;|&#39;/, "\047", k); gsub(/&amp;/, "\\&", k)
+    gsub(/[\001-\037\177]/, " ", k)
+    on = tag("cap:onset"); ex = tag("cap:expires")
+    printf "%s\t%s\t%d\t%d\n", c, tolower(k), on == "" ? 0 : iso(on), ex == "" ? 0 : iso(ex)
+  }'
+}
+
+# Fetch the forecast, and with it the air, the altitude and the home area's warnings; the
+# forecast is what counts (a failed try at the others keeps what is saved). Why a try failed goes
+# to $DATA.err, for the panel.
+fetch() {
+  R=$(curl -s --compressed --max-time 15 -w "\n%{http_code}" "$URL"); rc=$?
+  code=${R##*"$NL"}; J=${R%"$NL"*}; why=
+  if [ "$rc" -ne 0 ]; then
+    case $rc in 6) why="the server's name didn't resolve" ;; 7) why="no connection to the server" ;;
+                28) why="no answer within 15 seconds" ;; *) why="network error (curl $rc)" ;; esac
+  elif [ "$code" = 429 ]; then why="too many requests from this address (429)"
+  elif [ "$code" != 200 ]; then
+    why=$(printf '%s' "$J" | sed -n 's/.*"reason":"\([^"]*\)".*/\1/p')
+    why="the server said $code${why:+: $why}"
+  else case $J in *'"hourly":{'*) ;; *) why="no forecast in the server's answer" ;; esac
+  fi
+  if [ -n "$why" ]; then printf '%s\n' "$why" > "$DATA.err"; return 1; fi
+  rm -f "$DATA.err"
+  printf '%s' "$J" > "$DATA.$$" && mv "$DATA.$$" "$DATA" || return 1
+  A=$(curl -sf --compressed --max-time 10 "$AIRURL") &&
+    case $A in *'"european_aqi":['*) printf '%s' "$A" > "$AIR.$$" && mv "$AIR.$$" "$AIR" ;; esac
+  [ -s "$HEIGHT" ] ||                         # (once: it doesn't change)
+    { E=$(curl -sf --max-time 10 "https://api.open-meteo.com/v1/elevation?latitude=$LAT&longitude=$LON") &&
+      case $E in *'"elevation":['*) printf '%s\n' "$E" > "$HEIGHT.$$" && mv "$HEIGHT.$$" "$HEIGHT" ;; esac; }
+  [ -n "$NEARHOME" ] || return 0
+  W=$(curl -sf --compressed --max-time 10 "https://feeds.meteoalarm.org/feeds/meteoalarm-legacy-atom-$WARN_FEED") &&
+    case $W in *'<feed'*) printf '%s\n' "$W" | warnings > "$WARN.$$" && mv "$WARN.$$" "$WARN" ;; esac
+  return 0
+}
+
+# The saved forecast, fetched again when it and the last try are both over FETCH_EVERY
+# minutes old, and only with a network route; FORCE fetches at once. Prints nothing when the
+# data is fresh, else why not ("offline" or "failed"); fails when nothing usable is saved.
+load() {
+  mkdir -p "$CACHE"                           # (gone while the loop ran: made again)
+  every=$FETCH_EVERY                          # nothing usable saved: try again sooner
+  [ -n "$(find "$DATA" -mmin -"$MAX_AGE" 2>/dev/null)" ] || every=$RETRY
+  if [ -n "$FORCE" ] || { [ -z "$(find "$DATA" -mmin -"$FETCH_EVERY" 2>/dev/null)" ] &&
+       [ -z "$(find "$DATA.try" -mmin -"$every" 2>/dev/null)" ] && online; }; then
+    true > "$DATA.try"                        # (true, not ":": a failed write to ":" ends the shell)
+    fetch && return 0
+  fi
+  [ -n "$(find "$DATA" -mmin -"$FETCH_EVERY" 2>/dev/null)" ] && return 0
+  [ -n "$(find "$DATA" -mmin -"$MAX_AGE" 2>/dev/null)" ] || return 1
+  if online; then echo failed; else echo offline; fi
+}
+
+# One awk pass turns the saved JSON into the bar line or the panel lines.
+# Times in the file are the city's own; "now" is taken in the city's time too.
+render() {
+  W_NOTE=$3 W_PLACE=$CITY W_WHY=${WHY-} awk -v MODE="$1" -v STALE="$2" -v FONT="$ICONFONT" \
+      -v WARNS="$( [ -n "$NEARHOME" ] && echo "$WARN")" '
+  BEGIN { NOTE = ENVIRON["W_NOTE"]; PLACE = ENVIRON["W_PLACE"]; WHY = ENVIRON["W_WHY"] }   # (not -v: it reads backslashes)
+  function r0(x) { x = sprintf("%.0f", x) + 0; return x ? x : 0 }   # rounded, and no "-0"
+  function section(name) { return match(J, "\"" name "\":\\{[^}]*\\}") ? substr(J, RSTART, RLENGTH) : "" }
+  function arr(sec, key, out,   s) {
+    if (!match(sec, "\"" key "\":\\[[^]]*\\]")) return 0
+    s = substr(sec, RSTART + length(key) + 4, RLENGTH - length(key) - 5); gsub(/"/, "", s)
+    return split(s, out, ",")
+  }
+  function pad(g) {   # px before (and taken back after) a weather glyph: centred in 16 px
+    return g == "\356\214\253" ? 4 : g == "\356\214\202" ? 0 : (g == "\356\214\222" || g == "\356\214\223") ? 1 : 2
+  }
+  function icon(c, day) {
+    if (c <= 1)  return day ? "\356\214\215" : "\356\214\253"
+    if (c == 2)  return day ? "\356\214\202" : "\356\215\276"
+    if (c == 45 || c == 48) return "\356\214\223"
+    if (c >= 51 && c <= 57) return "\356\214\233"
+    if (c >= 61 && c <= 67) return "\356\214\230"
+    if (c >= 80 && c <= 82) return "\356\214\231"
+    if ((c >= 71 && c <= 77) || c == 85 || c == 86) return "\356\214\232"
+    if (c >= 95) return "\356\214\235"
+    return "\356\214\222"
+  }
+  function words(c) {
+    if (c == 0) return "Clear";  if (c == 1) return "Mostly clear"; if (c == 2) return "Partly cloudy"
+    if (c == 3) return "Overcast"; if (c == 45 || c == 48) return "Fog"
+    if (c >= 51 && c <= 55) return "Drizzle"; if (c == 56 || c == 57) return "Freezing drizzle"
+    if (c >= 61 && c <= 65) return "Rain";    if (c == 66 || c == 67) return "Freezing rain"
+    if (c >= 71 && c <= 77) return "Snow";    if (c >= 80 && c <= 82) return "Showers"
+    if (c == 85 || c == 86) return "Snow showers"; if (c == 95) return "Thunderstorm"
+    if (c >= 96) return "Thunderstorm, hail"; return ""
+  }
+  function col(c, s) { return "<span foreground=\x27" c "\x27>" s "</span>" }
+  function dim(s) { return col("#9A8683", s) }           # the theme dim, a step lighter (5.6:1)
+  function ic(c, day) { return "<span font_family=\x27" FONT "\x27 foreground=\x27#9B59D0\x27>" icon(c, day) "</span>" }
+  function glyph(g, c) { return "<span font_family=\x27" FONT "\x27 foreground=\x27" c "\x27>" g "</span>" }
+  function esc(s) { gsub(/&/, "\\&amp;", s); gsub(/</, "\\&lt;", s); gsub(/>/, "\\&gt;", s); gsub(/"/, "\\&quot;", s); gsub(/\\/, "\\&#92;", s); return s }
+  # width of a panel line in characters: tags dropped, an entity or a UTF-8 character counts one
+  function vlen(s,   n) { gsub(/<[^>]*>/, "", s); gsub(/&[#a-z0-9]+;/, "x", s); n = length(s); return n - gsub(/[\200-\277]/, "", s) }
+  function sp(n,   s) { s = ""; while (n-- > 0) s = s " "; return s }
+  function compass(a) { return CP[int(((a + 11.25) % 360) / 22.5) + 1] }
+  function hm(t) { return strftime("%H:%M", t) }
+  function when(t) { return strftime("%F", t) == strftime("%F", systime()) ? hm(t) : strftime("%a %H:%M", t) }
+  # the city on the left, the status on the right, B characters apart (or on two lines)
+  function header(status,   city, head, gap) {
+    city = PLACE
+    if (match(city, /^([^\200-\277][\200-\277]*){32}/)) { match(city, /^([^\200-\277][\200-\277]*){30}/); city = substr(city, 1, RLENGTH) "…" }
+    head = "<b><span foreground=\x27#F7B922\x27>" esc(city) "</span></b>"
+    status = dim(status)
+    gap = B - vlen(head) - vlen(status)
+    if (gap >= 2) print head sp(gap) status
+    else { print head; print sp(B - vlen(status)) status }
+  }
+  # the next hours in quarter hours (the 15-minute forecast, six hours from the fetch): rain or
+  # snow now and until when, or from when to when, and how much; wet is 0.1 mm a quarter hour.
+  # Each value is the sum of the 15 minutes up to its time (Open-Meteo), so the quarter now is
+  # the first one whose time is still to come, and a wet one began at the time before it. Snow
+  # is in cm, and its water in mm is cm / 0.7 (7 cm of snow, 10 mm): snow when that is half of it
+  function rain(   M, n, i, j, k, mm, cm, what) {
+    M = section("minutely_15")
+    n = arr(M, "time", mt); arr(M, "precipitation", mp); arr(M, "snowfall", ms)
+    for (i = 1; i <= n && mt[i] <= NOWQ; i++) ;
+    if (n - i + 1 < 4) return ""                          # none saved, or under an hour left of it
+    for (j = i; j <= n && mp[j] < 0.1; j++) ;
+    if (j > n) return dim("no rain in the next " int((n - i + 1) / 4) " hours")
+    for (k = j; k <= n && mp[k] >= 0.1; k++) { mm += mp[k]; cm += ms[k] }
+    what = cm / 0.7 >= mm / 2 ? "snow" : "rain"
+    return col("#6FA8F0", what (j == i ? " now" : " from " substr(mt[j - 1], 12, 5)) \
+                          (k > n ? " on" : (j == i ? ", until " : " to ") substr(mt[k - 1], 12, 5))) \
+           dim(what == "snow" ? sprintf("  \302\267  %" (cm < 10 ? ".1" : ".0") "f cm", cm) \
+                              : sprintf("  \302\267  %" (mm < 10 ? ".1" : ".0") "f mm", mm))
+  }
+  { J = J $0 }
+  END {
+    split("N NNE NE ENE E ESE SE SSE S SSW SW WSW W WNW NW NNW", CP, " ")
+    # the panel is a block B characters wide, written left-aligned; the theme centres it over
+    # the buttons, which are as wide
+    B = 42
+    if (MODE == "empty") {                                  # nothing saved for this city yet
+      header(NOTE); print ""
+      print dim("nothing saved for this city yet")
+      n = split(WHY, w, " "); l = ""                         # why, in lines of B at most
+      for (i = 1; i <= n; i++)
+        if (l != "" && vlen(l " " w[i]) > B) { print dim(esc(l)); l = w[i] } else l = l (l == "" ? "" : " ") w[i]
+      if (l != "") print dim(esc(l))
+      exit 0
+    }
+    off = match(J, /"utc_offset_seconds":-?[0-9]+/) ? substr(J, RSTART + 21, RLENGTH - 21) + 0 : 0
+    NOW = strftime("%Y-%m-%dT%H:00", systime() + off, 1); TODAY = substr(NOW, 1, 10)
+    NOWQ = strftime("%Y-%m-%dT%H:%M", systime() + off, 1)
+    H = section("hourly")
+    nh = arr(H, "time", ht); arr(H, "temperature_2m", tt); arr(H, "apparent_temperature", ft)
+    arr(H, "weather_code", ct); arr(H, "is_day", dt); arr(H, "wind_speed_10m", wt)
+    arr(H, "wind_direction_10m", wd); arr(H, "wind_gusts_10m", wg)
+    for (n = 1; n <= nh && ht[n] != NOW; n++) ;
+    if (n > nh) exit 1
+    # warnings in force or to come, one line for each colour and kind (MeteoAlarm lists every
+    # area and update apart): the earliest start, the last end
+    now = systime()
+    while (WARNS != "" && (getline l < WARNS) > 0) {
+      if (split(l, f, "\t") < 4 || (f[4] > 0 && f[4] <= now)) continue
+      r = f[1] == "red" ? 3 : f[1] == "orange" ? 2 : 1; k = r " " f[2]
+      if (!(k in WS)) { WK[++nk] = k; WR[k] = r; WN2[k] = f[2]; WS[k] = f[3]; WE[k] = f[4] }
+      if (f[3] < WS[k]) WS[k] = f[3]
+      if (WE[k] > 0 && (f[4] == 0 || f[4] > WE[k])) WE[k] = f[4]
+      if (f[3] <= now && r > worst) worst = r                  # in force now: the bar shows it
+    }
+    for (i = 2; i <= nk; i++)                                  # by start, then the worse first
+      for (j = i; j > 1 && (WS[WK[j]] < WS[WK[j - 1]] || WS[WK[j]] == WS[WK[j - 1]] && WR[WK[j]] > WR[WK[j - 1]]); j--) {
+        x = WK[j]; WK[j] = WK[j - 1]; WK[j - 1] = x
+      }
+    split("#F7B922 #FF8A3D #F4604D", WC, " "); split("yellow orange red", WN, " ")
+    if (MODE == "bar") {                     # the icon takes the colour of a warning in force
+      c = worst ? WC[worst] : "#9B59D0"
+      g = icon(ct[n], dt[n]); o = pad(g); a = o ? "%{O" o "}" : ""; b = o ? "%{O-" o "}" : ""
+      if (STALE) printf "%%{F#5E4C4A}%s%%{T3}%s  %%{T-}%s%d°C%%{F-}\n", a, g, b, r0(tt[n])
+      else       printf "%%{F%s}%s%%{T3}%s  %%{T-}%s%%{F-}%d°C\n", c, a, g, b, r0(tt[n])
+      exit 0
+    }
+    header(NOTE); print ""
+    printf "%s  <span size=\x27large\x27><b>%d°C</b></span>   %s\n", ic(ct[n], dt[n]), r0(tt[n]), words(ct[n])
+    # every line stays within B characters: a longer one would wrap and run into the next
+    # (a forecast saved by an older version has no direction or gusts: then they are left out)
+    d = wd[n] == "" ? "" : " " compass(wd[n]); g = wg[n] == "" ? "" : sprintf(", gusts %.0f", wg[n])
+    s = sprintf("feels %d°  \302\267  wind %.0f km/h%s%s", r0(ft[n]), wt[n], d, g)
+    if (vlen(s) > B - 3) s = sprintf("feels %d°  \302\267  wind %.0f%s%s km/h", r0(ft[n]), wt[n], d, g)
+    print "   " dim(s)
+    r = rain(); if (r != "") print "   " r
+    for (i = 1; i <= nk && i <= 3; i++) {                      # a warning on one line, or two
+      k = WK[i]; s = WS[k] > now ? "from " when(WS[k]) (WE[k] ? " to " when(WE[k]) : "") : WE[k] ? "until " when(WE[k]) : "in force"
+      w = WN[WR[k]] " " esc(WN2[k]) " warning"
+      if (vlen(w ", " s) <= B - 5) print "   " glyph("\357\201\261", WC[WR[k]]) " " col(WC[WR[k]], w ", " s)
+      else { print "   " glyph("\357\201\261", WC[WR[k]]) " " col(WC[WR[k]], w); print "     " col(WC[WR[k]], s) }
+    }
+    print ""
+    D = section("daily")
+    nd = arr(D, "time", dd); arr(D, "temperature_2m_max", hi); arr(D, "temperature_2m_min", lo)
+    arr(D, "weather_code", dc); arr(D, "precipitation_probability_max", pp); arr(D, "precipitation_sum", ps)
+    for (i = 1; i <= nd && shown < 5; i++) {
+      if (dd[i] < TODAY) continue
+      shown++
+      name = (dd[i] == TODAY) ? "Today" : strftime("%a", mktime(substr(dd[i],1,4) " " substr(dd[i],6,2) " " substr(dd[i],9,2) " 12 00 00"))
+      printf "%-6s %s   %3d°  %s    %s\n", name, ic(dc[i], 1), r0(hi[i]), dim(sprintf("%3d°", r0(lo[i]))), \
+        dim(glyph("\357\201\203", "#9A8683") sprintf(" %3s%%", (pp[i] == "" ? 0 : pp[i])) (ps[i] >= 0.05 ? sprintf("  %4.1f mm", ps[i]) : ""))
+    }
+  }' "$DATA"
+}
+
+stamp() {  # "09:33" if the data is from today, else "Mon 09:33"
+  if [ "$(date -r "$DATA" +%F)" = "$(date +%F)" ]; then date -r "$DATA" +%H:%M; else date -r "$DATA" '+%a %H:%M'; fi
+}
+
+bar() {    # one bar line; with nothing to show, a faint placeholder: an empty line would hide
+           # the module, and with it the click that opens the panel
+  place
+  if STALE=$(load) && out=$(render bar "$STALE"); then printf '%s\n' "$out"
+  else printf '%%{F#5E4C4A}%%{O1}%%{T3}%s  %%{T-}%%{O-1}--\302\260C%%{F-}\n' "$NA"
+  fi
+}
+
+barzone() {  # ZONE if the bar should run on it: away from home, and its clock reads otherwise
+  place
+  [ -n "$AWAY" ] && [ -n "$ZONE" ] || { ZONE=; return 0; }
+  [ "$(date +%z%Z)" = "$(unset TZ; date +%z%Z)" ] && ZONE=
+  return 0
+}
+
+follow() {   # the bar runs on another zone than the city's: start it again, once for a zone
+             # (it wouldn't take it otherwise) and not while the panel is open
+  barzone
+  [ "$ZONE" = "$BARTZ" ] && return 0
+  grep -q 'weather" zone' "$HOME/.local/bin/bar" 2>/dev/null || return 0
+  [ -r "$CACHE/panel.pid" ] && read -r p < "$CACHE/panel.pid" && kill -0 "$p" 2>/dev/null && return 0
+  [ -r "$CACHE/zone.tried" ] && [ "$(cat "$CACHE/zone.tried")" = "z$ZONE" ] && return 0
+  printf 'z%s\n' "$ZONE" > "$CACHE/zone.tried"
+  # (with the user's own locale back, not the C this script runs in: else the whole bar would)
+  if [ -n "$ULOC" ]; then LC_ALL=$ULOC setsid "$HOME/.local/bin/bar" > /dev/null 2>&1 < /dev/null &
+  else env -u LC_ALL setsid "$HOME/.local/bin/bar" > /dev/null 2>&1 < /dev/null &
+  fi
+}
+
+poke() {   # make the bar redraw now instead of within the minute
+  [ -r "$CACHE/bar.pid" ] && read -r pid < "$CACHE/bar.pid" &&
+    tr '\0' ' ' 2>/dev/null < "/proc/$pid/cmdline" | grep -q 'weather[^ ]* bar' && kill -USR1 "$pid"
+}
+
+set_place() {   # make "$1" (lat<TAB>lon<TAB>name[<TAB>zone]) the current city, keep 8 recent:
+                # one line a place, the newest one's
+  split "$1" || return 1
+  { printf '%s\n' "$1"; [ -r "$PLACES" ] && awk -F "$T" -v a="$LAT" -v b="$LON" '!($1 == a && $2 == b)' "$PLACES"; } |
+    head -n 8 > "$PLACES.$$" && mv "$PLACES.$$" "$PLACES"
+}
+
+menu() { LC_ALL=$ULOC rofi "$@"; }
+
+# shellcheck disable=SC2086
+say() { menu -e "$1" $ROFI -theme-str 'window {width: 44ch;} textbox {horizontal-align: 0.5;}'; }
+
+search() {      # find cities called "$1"; the chosen one is printed as lat<TAB>lon<TAB>name
+  J=$(curl -sf --compressed --max-time 10 --get --data-urlencode "name=$1" -d count=8 -d language=en -d format=json \
+        https://geocoding-api.open-meteo.com/v1/search) || { say "Can't search right now. Offline?"; return 1; }
+  hits=$(printf '%s' "$J" | awk '
+    function str(o, k) { return match(o, "\"" k "\":\"[^\"]*\"") ? substr(o, RSTART + length(k) + 4, RLENGTH - length(k) - 5) : "" }
+    function num(o, k) { return match(o, "\"" k "\":-?[0-9.]+") ? substr(o, RSTART + length(k) + 3, RLENGTH - length(k) - 3) : "" }
+    { J = J $0 }
+    END {
+      if (!match(J, /"results":\[.*\]/)) exit
+      n = split(substr(J, RSTART + 11, RLENGTH - 12), obj, /\},\{/)
+      for (i = 1; i <= n; i++) {
+        name = str(obj[i], "name"); lat = num(obj[i], "latitude"); lon = num(obj[i], "longitude")
+        if (name == "" || lat == "" || lon == "") continue
+        a = str(obj[i], "admin1"); c = str(obj[i], "country"); z = str(obj[i], "timezone")
+        label = name (a != "" && a != name ? ", " a : "") (c != "" ? ", " c : "")
+        if (!seen[label]++) printf "%.2f\t%.2f\t%s%s\n", lat, lon, label, (z != "" ? "\t" z : "")
+      }
+    }')
+  [ -n "$hits" ] || { say "No place called \"$1\" found."; return 1; }
+  # shellcheck disable=SC2086
+  i=$(printf '%s\n' "$hits" | cut -f3 | menu -dmenu -i -p "$1" -l "$(printf '%s\n' "$hits" | wc -l)" -no-custom -format i \
+        -me-select-entry "" -me-accept-entry '!MousePrimary' $ROFI -theme-str "$RLOOK") &&
+    printf '%s\n' "$hits" | sed -n "$((i + 1))p"
+}
+
+pick_city() {   # the current city (dimmed) and earlier ones, the previous one preselected so Enter
+                # switches back; anything typed that isn't one of them is searched
+  list=$( { echo "$NAME"; [ -r "$PLACES" ] && cut -f3 "$PLACES"; echo "$HOME_NAME"; } | awk '!seen[$0]++')
+  n=$(printf '%s\n' "$list" | wc -l); sel=0; [ "$n" -ge 2 ] && sel=1
+  # shellcheck disable=SC2086
+  q=$(printf '%s\n' "$list" | menu -dmenu -i -p city -l "$n" -a 0 -selected-row "$sel" -markup \
+        -mesg "<span foreground='#9A8683'>Ctrl+Enter searches what you typed</span>" \
+        -me-select-entry "" -me-accept-entry '!MousePrimary' $ROFI -theme-str "$CLOOK") || return 0
+  [ -n "$q" ] && [ "$q" != "$NAME" ] || return 0
+  line=$( { [ -r "$PLACES" ] && cat "$PLACES"; echo "$HOME_PLACE"; } | W_Q=$q awk -F "$T" '$3 == ENVIRON["W_Q"] { print; exit }')
+  [ -n "$line" ] || line=$(search "$q") || return 0
+  [ -n "$line" ] || return 0
+  set_place "$line" || return 0
+  place; FORCE=1 load >/dev/null      # a new city: fetch it now
+  poke
+}
+
+# The panel's lines as single-line text boxes in the theme, one per line: rofi gives each the
+# height of one line of its font, so no font can push the last ones out of the window (a
+# message box is sized by an estimate that some fonts overrun). The text goes into a rasi
+# string, one per line of the theme: it holds no double quote (esc turns them into &quot;).
+panel() {
+  printf '%s\n' "$1" | awk -v pad="$2" '
+    { line[NR] = ($0 == "" ? " " : $0) }
+    END {
+      printf "mainbox {children: [panel, listview];}\npanel {expand: false; spacing: 0; padding: %s; children: [", pad
+      for (i = 1; i <= NR; i++) printf "%stextbox-w%d", (i > 1 ? ", " : ""), i
+      print "];}"
+      for (i = 1; i <= NR; i++) printf "textbox-w%d {markup: true; padding: 0; background-color: transparent; text-color: #DCC8AE; content: \"%s\";}\n", i, line[i]
+    }'
+}
+
+case $1 in
+update)                         # right-click on the bar: fetch now
+  place; FORCE=1 load >/dev/null; poke
+  ;;
+forecast)                       # click on the bar: the panel
+  ROFI="-theme $HOME/.config/rofi/warm.rasi -m $("$HOME/.local/bin/screen-main") -location 2 -yoffset 24"
+  # one click picks a button or a row, on release ('!'): picking on the press would close
+  # this menu with the button still down, and the next one would take the release for a
+  # click outside itself and close at once
+  # the text block and the two buttons are both B (42) characters wide and centred in the
+  # 55-character window: 6.5 characters in from each side, less the window's padding; the
+  # buttons hold only their text, so an icon column from rofi's show-icons can't push it
+  LOOK="window {width: 55ch; padding: 14px;}
+        listview {columns: 2; lines: 1; spacing: 1ch; fixed-columns: true; scrollbar: false;
+                  padding: 5px calc(6.5ch - 16px) 0 calc(6.5ch - 16px);}
+        element {children: [element-text]; border-radius: 4px; padding: 4px 0;}
+        element normal.normal, element alternate.normal {background-color: #3A2430; text-color: #DCC8AE;}
+        element selected.normal {background-color: #F7B922; text-color: #140C10;}
+        element-text {background-color: transparent; text-color: inherit; horizontal-align: 0.5; vertical-align: 0.5;}"
+  PAD="4px calc(6.5ch - 18px) 4px calc(6.5ch - 14px)"
+  CLOOK="window {width: 44ch;} entry {placeholder: \"search or pick\"; placeholder-color: #9A8683;}
+         element {children: [element-text];} element normal.active, element alternate.active {text-color: #9A8683;}"
+  RLOOK="window {width: 44ch;} element {children: [element-text];}"
+  UPDATE="<span font_family='$ICONFONT' line_height='0.5'>$(printf '\357\200\241')</span>  Update now"
+  echo $$ > "$CACHE/panel.pid"                # the bar waits with a new time zone until it closes
+  trap 'rm -f "$CACHE/panel.pid"; poke' EXIT
+  trap 'exit 0' TERM INT HUP
+  PIN="<span font_family='$ICONFONT' line_height='0.5'>$(printf '\357\201\201')</span>"
+  while :; do
+    place
+    CITYM=$(printf '%s' "$CITY" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')   # for markup
+    # what is saved, as it is: opening the panel never waits on the network
+    NOTE='' STALE=''
+    if [ -n "$(find "$DATA" -mmin -"$MAX_AGE" 2>/dev/null)" ]; then
+      if [ -n "$(find "$DATA" -mmin -"$FETCH_EVERY" 2>/dev/null)" ]; then NOTE="updated $(stamp)"
+      elif ! online; then STALE=offline; NOTE="offline · $(stamp)"
+      elif [ -n "$FAILED" ] || [ -n "$(find "$DATA.try" -newer "$DATA" 2>/dev/null)" ]; then
+        STALE=failed; NOTE="update failed · $(stamp)"
+      else STALE=old; NOTE="updated $(stamp)"; fi
+    fi
+    if [ -n "$NOTE" ] && OUT=$(render panel "$STALE" "$NOTE"); then :
+    else                                    # nothing to show: why not, as far as known
+      WHY=; [ -r "$DATA.err" ] && read -r WHY < "$DATA.err"
+      if ! online; then NOTE=offline; WHY=; elif [ -n "$WHY" ]; then NOTE="update failed"; else NOTE="not fetched yet"; fi
+      OUT=$(DATA=/dev/null render empty "" "$NOTE")
+    fi
+    # shellcheck disable=SC2086
+    pick=$(printf '%s\n%s\n' "$UPDATE" "$PIN  $CITYM" | menu -dmenu -markup-rows -no-custom -format i -l 1 \
+             -me-select-entry "" -me-accept-entry '!MousePrimary' $ROFI -theme-str "$LOOK
+$(panel "$OUT" "$PAD")") || exit 0
+    FAILED=
+    case $pick in
+      0) r=$(FORCE=1 load) && [ -z "$r" ] || FAILED=1; poke ;;   # fetch now, show the panel again
+      1) pick_city ;;
+      *) exit 0 ;;
+    esac
+  done
+  ;;
+bar)                            # polybar, tail = true: redraw every minute, or right away on USR1
+  trap ':' USR1                 # first: a poke must never find the loop without it
+  trap 'kill $! 2>/dev/null; exit 0' TERM INT HUP
+  BARTZ=${TZ-}                  # the zone polybar runs on: it started this loop
+  echo $$ > "$CACHE/bar.pid"
+  while :; do
+    bar
+    follow
+    sleep 60 & wait $!
+    kill $! 2>/dev/null
+  done
+  ;;
+zone)                           # ~/.local/bin/bar: eval "$(weather zone)"
+  barzone
+  if [ -n "$ZONE" ]; then
+    f=$(cat "${XDG_CONFIG_HOME:-$HOME/.config}"/polybar-mine/*.ini 2>/dev/null |
+        sed -n 's/^[[:blank:]]*time[[:blank:]]*=[[:blank:]]*\${env:CLOCK_TIME:\(.*\)}[[:blank:]]*$/\1/p' | head -n 1)
+    f=$(printf '%s' "${f:-%H:%M} %Z" | sed "s/'/'\\\\''/g")
+    printf "export TZ='%s' CLOCK_TIME='%s'\n" "$ZONE" "$f"
+  else
+    echo "unset TZ CLOCK_TIME"
+  fi
+  ;;
+home)                           # planhour, night: where home is
+  printf '%s\t%s\t%s\n' "$HOME_LAT" "$HOME_LON" "$HOME_NAME"
+  ;;
+*)
+  bar
+  ;;
+esac
+exit 0

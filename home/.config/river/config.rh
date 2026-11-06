@@ -264,9 +264,11 @@ keybinds [
     #: colour picker
     super, p, launch, ~/.local/bin/ob-colorpicker
     #: music player (ncmpcpp)
-    ctrl+alt, m, launch, ~/.local/bin/ob-music
+    ctrl+alt, m, launch, kitty --class Music ncmpcpp
     #: notes: add a line
     super+alt+shift, n, launch, ~/.local/bin/notes add
+    #: change the wallpaper
+    super+alt, w, launch, ~/.local/bin/wallpaper
 ]
 
 ## The mouse, as in bspwm: Alt+drag moves a window, Alt+right-drag resizes it

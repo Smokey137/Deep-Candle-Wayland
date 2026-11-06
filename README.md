@@ -1,19 +1,43 @@
 # Deep Candle Wayland
 
-[Deep Candle](https://github.com/Smokey137/Deep-Candle) on Wayland: **river** and **rhine**
-instead of X and bspwm, **waybar** instead of polybar. The same theme, the same bar pieces, the
-same rofi menus, almost the same keys.
+[Deep Candle](https://github.com/Smokey137/Deep-Candle), the warm dark desktop, on Wayland:
+**river** and **rhine** instead of X and bspwm, **waybar** instead of polybar. The same theme,
+fonts, wallpaper, bar pieces, rofi menus and scripts; almost the same keys.
+
+This repo stands alone: it needs nothing from Deep Candle. It has everything of Deep Candle's
+desktop and look, but not the settings of single apps (see "What's in it").
+
+Made on 6 Nov 2026 from Deep Candle of that day, for rhine 0.5.0 and river 0.5.0, on Artix
+(runit). Not yet used as a daily desktop: read "Not ported" before you move to it.
+
+## What's in it
 
 ```
- Deep-Candle           the theme, fonts, rofi, dunst, kitty, the bar's scripts   (X: bspwm)
-   └─ this repo        on top: the Wayland parts                               (river + rhine)
+ home/        -> ~        the session, the bar, the look, the shell, the scripts
+ fonts/       -> ~/.local/share/fonts/      Iosevka and JetBrains Mono Nerd Fonts, Mass Driver
+ wallpaper/   -> ~/Pictures/Wallpapers/     and ~/.wallpaper points to it
+ dconf/       -> GTK's theme names          (GTK reads them there on Wayland)
+ system/etc/environment                     Qt's colours (copy it by hand, with sudo)
 ```
 
-This repo holds only what Wayland changes. Deep Candle stays the one source of the look and
-the scripts, so a change there reaches both.
+| part | files under `home/` |
+|---|---|
+| the session | `.zprofile`, `.local/bin/rhine-session`, `.config/river/config.rh` |
+| the bar | `.config/waybar/`, `.local/bin/bar`, `bar-markup` and the bar's scripts |
+| GTK | `.themes/Deep-Candle/`, `.config/gtk-3.0/`, `.config/gtk-4.0/`, `.gtkrc-2.0`, `.local/share/gtksourceview-4/` |
+| Qt | `.config/qt5ct/`, `.config/qt6ct/` |
+| fonts, cursor | `.config/fontconfig/`, `.icons/default/index.theme` |
+| terminal, shell | `.config/kitty/`, `.zshrc`, `.oh-my-zsh/custom/themes/archcraft.zsh-theme` |
+| menus, notices | `.config/rofi/`, `.config/dunst/`, `.local/share/deep-candle/osd/` |
+| screenshots | `.config/swappy/config` |
+| the palette | `.config/polybar-mine/colors.ini`: the colours every bar script reads (`palette`); the name stays so the scripts need no change |
+| scripts | `.local/bin/`: the bar's pieces, menus, sound, music, network, weather, the hours, notes, wallpaper, power, screenshots |
 
-Made on 6 Nov 2026 for rhine 0.5.0 and river 0.5.0, on Artix (runit). Not yet used as a daily
-desktop: read "Not ported" before you move to it.
+**Left out, on purpose** (single apps' settings): Brave and its tabs helper, Violentmonkey,
+qBittorrent, calibre, Geany, Neovim, sioyek, zathura, Atril, nsxiv, PCManFM-Qt, Thunar, qps,
+mpd, ncmpcpp, which app opens which file (`mimeapps.list`). Also the X-only parts: polybar's
+modules, picom, bspwm, Openbox, xfsettingsd, `.Xresources`, flameshot, and the X-only scripts
+(see "Not ported"). They stay in Deep Candle.
 
 ## Two programs instead of one
 
@@ -53,8 +77,9 @@ Log out (power menu → logout, or Ctrl+Alt+Delete): rhine ends, river ends, you
 
 ## Install (on a fresh Artix)
 
-1. Programs: Deep Candle's list (its `packages.txt`, section `[pacman]`), then this repo's:
-   `sudo pacman -S --needed $(grep -v -e '^#' -e '^$' packages.txt)`
+1. Programs: `packages.txt` says how (`[pacman]`, then `[aur]`). On Artix, NetworkManager also
+   needs `networkmanager-runit`, linked into `/etc/runit/runsvdir/default` (and no iwd or
+   dhcpcd service beside it).
 2. Build rhine (it is not packaged). As yourself, not root:
    ```
    git clone https://codeberg.org/Sivecano/rhine.git
@@ -65,21 +90,22 @@ Log out (power menu → logout, or Ctrl+Alt+Delete): rhine ends, river ends, you
    ```
    - `-Ddbus=false`: rhine then needs no notification daemon at start.
    - The newest release tag, not `main`: `main` changes the config words now and then.
-3. zsh as your login shell (`~/.zprofile` is zsh's): `chsh -s /bin/zsh`.
-4. Deep Candle, then this, each from its own folder:
+3. zsh and its prompt (before step 4: git won't clone into a folder that's there):
    ```
-   cd ~/Deep-Candle          && dbus-run-session ./install bspwm
-   cd ~/Deep-Candle-Wayland  && ./install
+   chsh -s /bin/zsh
+   git clone https://github.com/ohmyzsh/ohmyzsh.git ~/.oh-my-zsh
    ```
-   - `dbus-run-session`: Deep Candle's install loads the GTK theme through dconf, which needs
-     a D-Bus bus (an SSH login has none).
-   - `bspwm`'s own files come along (`~/.config/bspwm`, `~/.xinitrc`). Nothing starts them.
-   - Every file this repo changes is kept first as `<file>.bak-YYYYMMDD`. `--dry-run` shows
-     what would change.
-5. Log out, log in on tty1.
-
-The Wi-Fi menu and the bar's network piece use NetworkManager (`nmcli`), as on Archcraft.
-On Artix: `networkmanager` and `networkmanager-runit`, and no iwd or dhcpcd service beside it.
+4. This repo:
+   ```
+   cd ~/Deep-Candle-Wayland && dbus-run-session ./install
+   ```
+   - `dbus-run-session`: the GTK theme's names go in through dconf, which needs a D-Bus bus
+     (an SSH login has none). From inside the session, plain `./install` is enough.
+   - Every file it changes is kept first as `<file>.bak-YYYYMMDD`. `--dry-run` shows what
+     would change.
+5. Once, with sudo: `sudo cp system/etc/environment /etc/environment` (Qt's colours) and
+   `sudo usermod -aG video $USER` (the brightness keys).
+6. Log out, log in on tty1.
 
 ## Keys
 
@@ -104,6 +130,8 @@ Most keys are bspwm's. What is different:
 | Super+= / Super+- | add / remove a desktop | not needed: workspaces come and go by themselves |
 | Super+V | clipboard history | — (not ported) |
 | Super+N | notes window | — (Super+Alt+Shift+N still adds a line) |
+| Ctrl+Alt+M | ncmpcpp with album art | ncmpcpp, plain (its settings are left out) |
+| — | Change Wallpaper (desktop menu) | Super+Alt+W |
 
 Workspaces: rhine counts from 0, the keys and the bar from 1. Super+1 is rhine's workspace 0;
 waybar shows its "id", which is the number + 1. Empty workspaces you are not on disappear.
@@ -142,34 +170,38 @@ scripts serve both bars.
 | colour picker | xcolor | slurp + grim (`~/.local/bin/ob-colorpicker`) |
 | main screen | xrandr | `/sys/class/drm` (`~/.local/bin/screen-main`): the rofi popups use it |
 | power menu | systemctl, bspc | loginctl (elogind), `rhinectl rhine exit` |
-| GTK theme | xfsettingsd | dconf (Deep Candle's `./install` loads `dconf/desktop-interface.ini`) |
+| GTK theme | xfsettingsd | dconf (`./install` loads `dconf/desktop-interface.ini`) |
+| wallpaper picker | feh | swaybg (`~/.local/bin/wallpaper`, Super+Alt+W) |
 | notices | dunst | dunst (it does Wayland) |
 | menus | rofi | rofi (2.0 does Wayland) |
 | compositor | picom | none: river draws; kitty is still see-through by itself |
 
-## Files
+## Files made for Wayland
+
+The rest of `home/` is Deep Candle's, as it was. These are new, or changed for Wayland:
 
 | file | what |
 |---|---|
-| `home/.zprofile` | on tty1: `rhine-session` |
+| `home/.zprofile` | on tty1: `rhine-session` (Deep Candle's ran `startx`) |
 | `home/.local/bin/rhine-session` | the environment, D-Bus, river with rhine |
 | `home/.config/river/config.rh` | rhine: borders, rules, keys, mouse, what starts |
 | `home/.config/waybar/config.jsonc` | the bar's pieces and their clicks |
 | `home/.config/waybar/style.css` | the bar's look (colours from `colors.ini`) |
-| `home/.local/bin/bar` | starts waybar (again) |
+| `home/.local/bin/bar` | starts waybar (again); Deep Candle's started polybar |
 | `home/.local/bin/bar-markup` | polybar tags → waybar markup |
 | `home/.local/bin/keys` | Super+/: the key list |
 | `home/.local/bin/screen-main` | the main screen's name, without X |
 | `home/.local/bin/powermenu` | the power menu, for elogind and rhine |
 | `home/.local/bin/screenshot` | screenshots with grim, slurp, swappy |
 | `home/.local/bin/ob-colorpicker` | the colour picker |
+| `home/.local/bin/wallpaper` | the picker: swaybg instead of feh (one line) |
 
-Deep Candle's `./install` puts its files first; this repo's `./install` puts these over them,
-so they replace the X versions of the same names.
+**Keeping up with Deep Candle**: the shared files (the theme, the scripts) are copies. A change
+made in Deep Candle reaches this repo only when you copy it here too.
 
 ## Not ported
 
-These need X, or bspwm, and have no Wayland version yet:
+These need X, or bspwm, and have no Wayland version yet. Their scripts are not in this repo:
 
 - the **window menu** (Alt+Space) and the **window list** (Alt+Shift+Space)
 - **super-peek** (hold Super), **alt-tab**'s list, the **desktop menu** and its right-click
@@ -180,7 +212,6 @@ These need X, or bspwm, and have no Wayland version yet:
 - **border-colour**, **chain-notice**, key chains (Super+Alt+M / R), ksuperkey's Super tap
 - hide, shade, border on / off, sticky, always below, "same sizes" (Super+B), the corner and numpad snaps:
   rhine has no such commands yet
-- the wallpaper picker (`wallpaper`) still calls feh; `~/.wallpaper` is shown by swaybg at login
 
 ## When it goes wrong
 
@@ -194,5 +225,6 @@ These need X, or bspwm, and have no Wayland version yet:
 
 ## See also
 
-Deep Candle's own pages (its `docs/`): `bspwm.md`, `keys.md`, `bar.md`, `menus.md`,
-`screenshot.md`, `theme.md`, `how-it-fits-together.md`.
+Deep Candle's own pages (its `docs/`) explain the shared parts in full: `theme.md`,
+`look-gtk-qt-fonts.md`, `bar.md`, `menus.md`, `sound.md`, `music.md`, `weather.md`,
+`hours.md`, `terminal-and-shell.md`.

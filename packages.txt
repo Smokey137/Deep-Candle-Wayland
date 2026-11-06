@@ -1,25 +1,74 @@
-# Programs Deep Candle Wayland needs, on top of Deep Candle's own list (its packages.txt,
-# section [pacman]: kitty, rofi, dunst, mpd, the sound, the fonts ...). Arch and Artix use the
-# same names. rhine itself is not packaged: README, "Install".
-#   sudo pacman -S --needed $(grep -v -e '^#' -e '^$' packages.txt)
-# One name per line; a comment goes on its own line.
+# Programs Deep Candle Wayland uses. Arch and Artix use the same names.
+#   pick() { awk -v want="$1" '/^\[/ { s = $0; next } /^[a-z]/ && index(want, s) { print }' packages.txt; }
+#   sudo pacman -S --needed $(pick "[pacman]")
+#   yay -S --needed $(pick "[aur]")
+# rhine is not packaged: README, "Install". One name per line; a comment on its own line.
 
-# the compositor; rhine (its window manager) is built with zig and git
+[pacman]
+# basics: the login shell (~/.zprofile is zsh's), git and base-devel (rhine, AUR packages)
+zsh
+git
+base-devel
+# the session: the compositor, zig to build rhine with, D-Bus, admin rights, saved passwords
 river
 zig
-git
-# the bar, the wallpaper
+dbus
+polkit
+gnome-keyring
+# the bar, the wallpaper; X apps and Qt apps on Wayland
 waybar
 swaybg
-# screenshots and the colour picker (swappy and imagemagick are in Deep Candle's list)
-grim
-slurp
-wl-clipboard
-# X apps on Wayland, Qt apps native on Wayland
 xorg-xwayland
 qt5-wayland
 qt6-wayland
-# the session: zsh (~/.zprofile), D-Bus (dbus-run-session), admin rights for apps
-zsh
-dbus
-polkit
+# the look: GTK's theme names (dconf), Qt's colours, the fonts the theme names
+dconf
+qt5ct
+qt6ct
+ttf-dejavu
+ttf-jetbrains-mono
+# terminal, menus, notices
+kitty
+rofi
+dunst
+libnotify
+# sound: the bar's sound pieces talk to the sound server through pactl
+pipewire
+pipewire-pulse
+wireplumber
+libpulse
+# the bar's scripts: music, network (NetworkManager: on Artix also networkmanager-runit),
+# weather, thumbnails and the colour picker
+playerctl
+mpd
+mpc
+networkmanager
+iw
+curl
+jq
+imagemagick
+# screenshots and the clipboard
+grim
+slurp
+swappy
+wl-clipboard
+# what the keys open (Super+F, Super+E, Ctrl+Alt+V / R / H / M, the password manager)
+pcmanfm-qt
+geany
+vim
+ranger
+btop
+ncmpcpp
+keepassxc
+
+[aur]
+brave-bin
+# the admin-password window (rhine starts it)
+xfce-polkit
+# the GTK 2 theme's engine
+gtk-engine-murrine
+
+# The prompt: oh-my-zsh, cloned into ~/.oh-my-zsh BEFORE ./install (README, "Install");
+# the AUR's oh-my-zsh-git lives elsewhere, where ~/.zshrc doesn't look.
+# Not in any repo above: the icon theme Zafiro (by zayronxio) and the Qogirr cursor (by
+# vinceliuice). Get them from their own pages; without them GTK uses its plain icons and cursor.

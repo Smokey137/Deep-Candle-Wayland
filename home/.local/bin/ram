@@ -1,0 +1,8 @@
+#!/bin/sh
+# ram: memory in use / all of it, in GiB, for polybar (every 3 s): read with the shell's own read,
+# no awk started each time
+while read -r k v _; do
+  case $k in MemTotal:) t=$v ;; MemAvailable:) a=$v; break ;; esac
+done < /proc/meminfo
+u=$(( ((t - a) * 10 + 524288) / 1048576 )) T=$(( (t * 10 + 524288) / 1048576 ))
+echo "$((u / 10)).$((u % 10))/$((T / 10)).$((T % 10)) GiB"

@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
-# install: put Deep Candle Wayland onto this computer, over Deep Candle.
+# install: put Deep Candle Wayland onto this computer.
 #
-#   ./install             copy home/ to ~ (a file it changes is kept first as <file>.bak-YYYYMMDD)
+#   ./install             everything below; a file it changes is kept first as <file>.bak-YYYYMMDD
 #   ./install --dry-run   only show what would change
 #
-# Deep Candle itself comes first (github.com/Smokey137/Deep-Candle, "./install bspwm" there):
-# the theme, the fonts, rofi, dunst, kitty and the bar's scripts. This repo then puts the
-# Wayland parts over it: river + rhine instead of X + bspwm, waybar instead of polybar, and the
-# few scripts that need a Wayland version. It does not install programs (packages.txt).
+#   home/        -> ~                                   the desktop, its look, its scripts
+#   fonts/       -> ~/.local/share/fonts/deep-candle/   (fonts/mass-driver/ -> .../mass-driver/)
+#   wallpaper/   -> ~/Pictures/Wallpapers/              and ~/.wallpaper points to it
+#   dconf/       -> GTK's theme names (needs a D-Bus bus: run it as  dbus-run-session ./install)
+# It does not install programs (packages.txt) and never touches /etc: for that it prints what to do.
 set -euo pipefail
 repo=$(cd "$(dirname "$0")" && pwd)
 cd "$repo"
@@ -20,14 +21,6 @@ for a; do
 done
 stamp=$(date +%Y%m%d)
 changed=0
-
-# Deep Candle there? (its rofi theme and the bar's colours: this repo uses both)
-for f in .config/rofi/warm.rasi .config/polybar-mine/colors.ini .local/bin/palette; do
-  if [ ! -e "$HOME/$f" ]; then
-    echo "~/$f is missing: install Deep Candle first (its ./install bspwm), then this." >&2
-    [ "$dry" = 1 ] || exit 1
-  fi
-done
 
 put() {   # put SOURCE DEST: copy, with @HOME@ made into this home folder
   local src=$1 dest=$2 tmp
@@ -49,16 +42,44 @@ put() {   # put SOURCE DEST: copy, with @HOME@ made into this home folder
   echo "  ${dest/#$HOME/\~}"
 }
 
-echo "== Deep Candle Wayland (home/ -> ~)"
+echo "== your files (home/ -> ~)"
 while IFS= read -r -d '' f; do put "$f" "$HOME/${f#home/}"; done < <(find home -type f -print0 | sort -z)
+
+echo "== fonts (-> ~/.local/share/fonts/deep-candle and .../mass-driver)"
+for f in fonts/*.ttf fonts/LICENSE-OFL.txt; do [ -e "$f" ] && put "$f" "$HOME/.local/share/fonts/deep-candle/${f#fonts/}"; done
+for f in fonts/mass-driver/*; do [ -e "$f" ] && put "$f" "$HOME/.local/share/fonts/mass-driver/${f#fonts/mass-driver/}"; done
+[ "$dry" = 0 ] && command -v fc-cache >/dev/null && fc-cache -f >/dev/null 2>&1 || true
+
+echo "== wallpaper (-> ~/Pictures/Wallpapers, ~/.wallpaper points to it)"
+for f in wallpaper/*; do
+  [ -e "$f" ] || continue
+  put "$f" "$HOME/Pictures/Wallpapers/${f#wallpaper/}"
+  if [ ! -e "$HOME/.wallpaper" ] && [ ! -L "$HOME/.wallpaper" ]; then
+    if [ "$dry" = 1 ]; then echo "  would link: ~/.wallpaper"; else ln -s "$HOME/Pictures/Wallpapers/${f#wallpaper/}" "$HOME/.wallpaper"; echo "  ~/.wallpaper"; fi
+  fi
+done
+
+echo "== dconf: GTK's theme, icons, cursor and font names (what GTK reads on Wayland)"
+if [ "$dry" = 1 ]; then
+  echo "  would load dconf/desktop-interface.ini"
+elif ! command -v dconf >/dev/null; then
+  echo "  dconf isn't installed: sudo pacman -S dconf, then run ./install again"
+elif [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
+  echo "  no D-Bus bus here (SSH?): run it as  dbus-run-session ./install"
+else
+  dconf load /org/gnome/desktop/interface/ < dconf/desktop-interface.ini && echo "  loaded"
+fi
 
 if [ "$dry" = 1 ]; then echo; echo "$changed file(s) would change. Nothing was changed."; exit 0; fi
 cat <<EOF
 
 Done ($changed file(s) changed; old ones kept as *.bak-$stamp).
 
-Once, if not done yet:
-  zsh      chsh -s /bin/zsh        (~/.zprofile starts the session; it is zsh's file)
+By hand, once:
+  zsh      chsh -s /bin/zsh          (~/.zprofile starts the session; it is zsh's file)
+           the prompt needs oh-my-zsh in ~/.oh-my-zsh (README: "Install", step 3)
   rhine    built and in /usr/local/bin (README: "Install")
+  /etc     Qt colours: sudo cp system/etc/environment /etc/environment
+  video    brightness keys: sudo usermod -aG video ${USER:-$(id -un)}
 Then log out, and log in on tty1: rhine-session starts river with rhine.
 EOF
