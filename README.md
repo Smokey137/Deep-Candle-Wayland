@@ -166,7 +166,7 @@ scripts serve both bars.
 | piece | on X | here |
 |---|---|---|
 | wallpaper | feh | swaybg, from `~/.wallpaper` |
-| screenshots | flameshot | grim + slurp, then swappy to mark it up (`~/.local/bin/screenshot`) |
+| screenshots | flameshot | grim + slurp, then swappy to mark it up; without swappy (Artix has none) kept and copied as is (`~/.local/bin/screenshot`) |
 | colour picker | xcolor | slurp + grim (`~/.local/bin/ob-colorpicker`) |
 | main screen | xrandr | `/sys/class/drm` (`~/.local/bin/screen-main`): the rofi popups use it |
 | power menu | systemctl, bspc | loginctl (elogind), `rhinectl rhine exit` |

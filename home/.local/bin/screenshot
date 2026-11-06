@@ -3,16 +3,22 @@
 # and xrandr; on Wayland grim takes the picture, slurp lets you pick the part, and swappy opens
 # it to mark it up (its keys: ~/.config/swappy/config). In swappy: Ctrl+C copies it, Ctrl+S
 # keeps it in ~/Pictures/Screenshots, Escape lets it go. Nothing is kept unless you say so.
+# Without swappy (Artix has no package of it): the shot is kept in ~/Pictures/Screenshots and
+# copied, with a notice that says where.
 # usage: screenshot [area|win|now|in5|in10]   no argument: a menu of them
 #   area   drag over the part you want        win    the window that has the focus
 #   now    the whole screen                   in5, in10   the whole screen, 5 or 10 seconds on
 mkdir -p "$HOME/Pictures/Screenshots"
 OSD=$(dirname "$0")/osd
 note() { "$OSD" shot camera Screenshot "$1"; }
-for c in grim slurp swappy; do
-  command -v "$c" >/dev/null || { note "$c isn't installed: sudo pacman -S grim slurp swappy"; exit 1; }
+for c in grim slurp; do
+  command -v "$c" >/dev/null || { note "$c isn't installed: sudo pacman -S grim slurp"; exit 1; }
 done
-shot() { grim "$@" - | swappy -f -; }
+shot() {
+  if command -v swappy >/dev/null; then grim "$@" - | swappy -f -; return; fi
+  f="$HOME/Pictures/Screenshots/$(date +%Y-%m-%d_%H-%M-%S).png"
+  grim "$@" "$f" && wl-copy < "$f" && note "kept and copied: ${f#"$HOME"/}"
+}
 
 MODE=${1#--}
 if [ -z "$MODE" ]; then

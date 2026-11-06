@@ -47,10 +47,10 @@ iw
 curl
 jq
 imagemagick
-# screenshots and the clipboard
+# screenshots and the clipboard (swappy, to mark a shot up: Arch has it, Artix doesn't; without
+# it a shot is kept and copied as it is. Its source: github.com/jtheoof/swappy)
 grim
 slurp
-swappy
 wl-clipboard
 # what the keys open (Super+F, Super+E, Ctrl+Alt+V / R / H / M, the password manager)
 pcmanfm-qt
