@@ -1,0 +1,290 @@
+# rhine: the Deep Candle session on Wayland (river 0.5 + rhine 0.5.0), ported from
+# wm/bspwm (bspwmrc + sxhkdrc) on 2026-11-06. rhine reads this file again by itself each time
+# it is saved: no restart key needed.
+#
+#   river  = the compositor: draws the screen, owns keyboard and mouse
+#   rhine  = the window manager: places windows, runs these keys (river -c rhine)
+#
+# Workspaces: rhine counts from 0. Super+1 is workspace 0, and the bar shows it as 1
+# (waybar prints rhine's "id", which is the number + 1). So the keys and the bar say 1-9.
+#
+# "#:" over a key = its words in the Super+/ list (~/.local/bin/keys).
+# What bspwm had and rhine can't do yet: see this repo's README.md, "Not ported".
+
+## Look: the bspwm borders (bspwmrc lines 15-23): 2 px, gap 8, the Deep Candle browns
+window_management {
+    focus_follows_pointer false
+    pointer_follows_focus false
+    float_move 0.01
+    gaps {
+        inner 8
+        outer 8
+        smart false
+    }
+    border {
+        width 2
+        colours {
+            focus rgb8, 0x7A, 0x58, 0x20
+            inactive rgb8, 0x2C, 0x23, 0x23
+            pinned rgb8, 0x45, 0x39, 0x37
+        }
+    }
+}
+
+## No animations: bspwm had none (picom only faded). To try them: a duration in microseconds,
+## e.g. 150_000, and an easing such as sinOut.
+animations {
+    move {
+        duration 0
+        easing sinOut
+    }
+    resize {
+        duration 0
+        easing sinOut
+    }
+    workspace {
+        duration 0
+        easing sinOut
+    }
+}
+
+## The cursor: Qogirr, as ~/.icons/default/index.theme names it
+xcursor {
+    theme Qogirr
+    size 24
+}
+
+## Every workspace tiles as bspwm did: split in two, again and again
+workspacerules [
+    any, layout, bsp
+]
+
+## Rules (bspwmrc lines 47-55): small tools and settings float. On Wayland a window is known by
+## its app id (an X app under Xwayland: its class). A * stands for one or more letters (not none).
+windowrules [
+    appid, *itrogen, float, true
+    appid, *xappearance, float, true
+    appid, *pavucontrol, float, true
+    appid, qt5ct, float, true
+    appid, qt6ct, float, true
+    appid, xfce4-appearance-settings, float, true
+    appid, xfce4-settings-manager, float, true
+    appid, xfce4-power-manager-settings, float, true
+    appid, *lueman-manager, float, true
+    appid, *m-connection-editor, float, true
+    appid, *alculate*, float, true
+    appid, *ad, float, true
+    appid, *enity, float, true
+    appid, *iewnior, float, true
+    appid, feh, float, true
+    appid, Music, float, true
+    appid, Music, size, 0.6, 0.55
+    appid, Music, position, 0.2, 0.2
+]
+
+keybinds [
+    ## Menus
+    #: app launcher
+    super, space, launch, ~/.local/bin/launcher
+    #: app launcher
+    alt, F1, launch, ~/.local/bin/launcher
+    #: this list of keys
+    super, slash, launch, ~/.local/bin/keys
+    #: run a command
+    super, r, launch, ~/.local/bin/runner
+    #: power menu
+    super, x, launch, ~/.local/bin/powermenu
+    #: log out (asks first)
+    ctrl+alt, Delete, launch, ~/.local/bin/powermenu logout
+
+    ## Windows and workspaces
+    #: jump to the window left
+    super, Left, moveFocus, Left
+    #: jump to the window right
+    super, Right, moveFocus, Right
+    #: jump to the window above
+    super, Up, moveFocus, Up
+    #: jump to the window below
+    super, Down, moveFocus, Down
+    #: move window left (a floating one: a step left)
+    super+shift, Left, moveWindow, Left
+    #: move window right (a floating one: a step right)
+    super+shift, Right, moveWindow, Right
+    #: move window up (a floating one: a step up)
+    super+shift, Up, moveWindow, Up
+    #: move window down (a floating one: a step down)
+    super+shift, Down, moveWindow, Down
+    #: nudge a floating window left
+    super+alt, Left, moveWindow, Left
+    #: nudge a floating window right
+    super+alt, Right, moveWindow, Right
+    #: nudge a floating window up
+    super+alt, Up, moveWindow, Up
+    #: nudge a floating window down
+    super+alt, Down, moveWindow, Down
+    #: resize: right edge to the left
+    super+ctrl, Left, changeSize, Focus, -0.03, +0, top_left
+    #: resize: right edge to the right
+    super+ctrl, Right, changeSize, Focus, +0.03, +0, top_left
+    #: resize: bottom edge up
+    super+ctrl, Up, changeSize, Focus, +0, -0.03, top_left
+    #: resize: bottom edge down
+    super+ctrl, Down, changeSize, Focus, +0, +0.03, top_left
+    #: float / tile this window
+    super+shift, space, floating, toggle, Focus
+    #: rotate: side by side / one above the other
+    super+ctrl, r, layoutCommand, bsp, changeSplit
+    #: rotate every split on this workspace
+    super+ctrl+shift, r, layoutCommand, bsp, swapAllSplits
+    #: switch window (the first one, then the next)
+    alt, Tab, cycleFocus
+    #: the workspace you were on before
+    super, Tab, focusWorkspace, PrevActive
+    #: next workspace with windows
+    ctrl+alt, Right, focusWorkspace, Next
+    #: previous workspace with windows
+    ctrl+alt, Left, focusWorkspace, Previous
+    #: take window to the next workspace
+    ctrl+alt+shift, Right, moveToWorkspace, Next
+    #: take window to the previous workspace
+    ctrl+alt+shift, Left, moveToWorkspace, Previous
+
+    #: workspace 1
+    super, 1, focusWorkspace, 0
+    #: workspace 2
+    super, 2, focusWorkspace, 1
+    #: workspace 3
+    super, 3, focusWorkspace, 2
+    #: workspace 4
+    super, 4, focusWorkspace, 3
+    #: workspace 5
+    super, 5, focusWorkspace, 4
+    #: workspace 6
+    super, 6, focusWorkspace, 5
+    #: workspace 7
+    super, 7, focusWorkspace, 6
+    #: workspace 8
+    super, 8, focusWorkspace, 7
+    #: workspace 9
+    super, 9, focusWorkspace, 8
+    #: take window to workspace 1
+    super+shift, 1, moveToWorkspace, 0
+    #: take window to workspace 2
+    super+shift, 2, moveToWorkspace, 1
+    #: take window to workspace 3
+    super+shift, 3, moveToWorkspace, 2
+    #: take window to workspace 4
+    super+shift, 4, moveToWorkspace, 3
+    #: take window to workspace 5
+    super+shift, 5, moveToWorkspace, 4
+    #: take window to workspace 6
+    super+shift, 6, moveToWorkspace, 5
+    #: take window to workspace 7
+    super+shift, 7, moveToWorkspace, 6
+    #: take window to workspace 8
+    super+shift, 8, moveToWorkspace, 7
+    #: take window to workspace 9
+    super+shift, 9, moveToWorkspace, 8
+
+    ## Window actions
+    #: close window
+    super, c, close, Focus
+    #: close window
+    super, q, close, Focus
+    #: close window
+    alt, F4, close, Focus
+    #: force-close a frozen app
+    super+shift, q, kill, Focus
+    #: fullscreen on / off
+    alt, F10, fullscreen, toggle, Focus
+    #: maximize on / off (here: fullscreen)
+    alt, F6, fullscreen, toggle, Focus
+    #: floating window always on top on / off
+    alt, F11, pin, toggle, Focus
+
+    ## Session
+    #: a fresh bar (waybar)
+    super+shift, r, launch, ~/.local/bin/bar; dunstify -u low -h string:x-dunst-stack-tag:obaction "Bar restarted"
+
+    ## Screenshots, brightness, volume, music
+    #: screenshot: pick an area
+    none, Print, launch, ~/.local/bin/screenshot area
+    #: screenshot in 5 seconds
+    alt, Print, launch, ~/.local/bin/screenshot in5
+    #: screenshot in 10 seconds
+    shift, Print, launch, ~/.local/bin/screenshot in10
+    #: screenshot of this window
+    ctrl, Print, launch, ~/.local/bin/screenshot win
+    #: screenshot of the whole screen
+    super, Print, launch, ~/.local/bin/screenshot now
+    #: screenshot menu
+    super, s, launch, ~/.local/bin/screenshot
+    #: brightness up
+    none, XF86MonBrightnessUp, launch, ~/.local/bin/brightness up
+    #: brightness down
+    none, XF86MonBrightnessDown, launch, ~/.local/bin/brightness down
+    #: volume up
+    none, XF86AudioRaiseVolume, launch, ~/.local/bin/volume up
+    #: volume down
+    none, XF86AudioLowerVolume, launch, ~/.local/bin/volume down
+    #: sound on / off
+    none, XF86AudioMute, launch, ~/.local/bin/volume mute
+    #: microphone on / off
+    none, XF86AudioMicMute, launch, ~/.local/bin/volume mic
+    #: music stop
+    none, XF86AudioStop, launch, ~/.local/bin/music stop
+    #: music play / pause
+    none, XF86AudioPlay, launch, ~/.local/bin/music toggle
+    #: music previous
+    none, XF86AudioPrev, launch, ~/.local/bin/music prev
+    #: music next
+    none, XF86AudioNext, launch, ~/.local/bin/music next
+    #: music: play / pause
+    super, d, launch, ~/.local/bin/music toggle
+
+    ## Applications
+    #: terminal (kitty)
+    super, Return, launch, kitty
+    #: terminal (kitty)
+    ctrl+alt, t, launch, kitty
+    #: files (pcmanfm-qt)
+    super, f, launch, pcmanfm-qt
+    #: browser (Brave)
+    super, w, launch, brave
+    #: editor (Geany)
+    super, e, launch, geany
+    #: vim
+    ctrl+alt, v, launch, kitty vim
+    #: ranger (files, in the terminal)
+    ctrl+alt, r, launch, kitty ranger
+    #: btop (what's running)
+    ctrl+alt, h, launch, kitty btop
+    #: big fullscreen terminal
+    super, t, launch, ~/.local/bin/ob-furminal
+    #: colour picker
+    super, p, launch, ~/.local/bin/ob-colorpicker
+    #: music player (ncmpcpp)
+    ctrl+alt, m, launch, ~/.local/bin/ob-music
+    #: notes: add a line
+    super+alt+shift, n, launch, ~/.local/bin/notes add
+]
+
+## The mouse, as in bspwm: Alt+drag moves a window, Alt+right-drag resizes it
+pointer_binds [
+    alt, Left, pointerOp, move
+    alt, Right, pointerOp, resize
+]
+
+## Started with the session, stopped when it ends (bspwmrc lines 73-100, the parts that work
+## on Wayland). Each line is run by sh.
+startup [
+    dbus-update-activation-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE HYPRLAND_INSTANCE_SIGNATURE
+    gnome-keyring-daemon --start --foreground --components=secrets
+    swaybg -m fill -i "$HOME/.wallpaper"
+    /usr/lib/xfce-polkit/xfce-polkit
+    dunst
+    ~/.local/bin/bar
+    pgrep -x mpd >/dev/null || mpd
+    pcmanfm-qt --daemon-mode
+    keepassxc
+]

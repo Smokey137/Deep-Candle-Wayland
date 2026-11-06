@@ -1,0 +1,39 @@
+#!/bin/sh
+# bar-markup: polybar's colour and font tags -> waybar's (Pango markup), line by line.
+#   some-bar-script | bar-markup
+# The bar scripts (volume bar, mic, music, netbar, netspeed, hours bar, weather bar ...) print
+# polybar's tags; waybar runs them through this, so the same scripts serve both bars.
+#   %{F#RRGGBB} %{F-}   text colour      %{B#RRGGBB} %{B-}   ground colour
+#   %{T2} .. %{T5} %{T-} polybar's fonts (font-1 .. font-4 in polybar-mine/config.ini)
+#   %{O n}               a gap of n pixels: a space for every 7
+#   %{A..} %{u..} ...    clicks, lines: left out (waybar's own on-click does clicks)
+# Every piece of text gets its own <span>, so the tags may close in any order, as polybar allows.
+exec awk '
+function esc(s) { gsub(/&/, "\\&amp;", s); gsub(/</, "\\&lt;", s); gsub(/>/, "\\&gt;", s); return s }
+function col(c) { return (length(c) == 9) ? "#" substr(c, 4) : c }   # #AARRGGBB -> #RRGGBB
+function run(t,   a) {
+  if (t == "") return
+  a = ""
+  if (fg != "") a = a " foreground=\"" col(fg) "\""
+  if (bg != "") a = a " background=\"" col(bg) "\""
+  if (font == "2") a = a " weight=\"bold\""
+  else if (font == "3" || font == "4") a = a " font_family=\"Iosevka Nerd Font\" size=\"12288\""
+  else if (font == "5") a = a " font_family=\"DejaVu Sans Mono\" size=\"11264\""
+  out = out ((a == "") ? t : "<span" a ">" t "</span>")
+}
+{
+  line = esc($0); out = ""; fg = ""; bg = ""; font = ""
+  while (match(line, /%\{[^}]*\}/)) {
+    run(substr(line, 1, RSTART - 1))
+    tag = substr(line, RSTART + 2, RLENGTH - 3)
+    line = substr(line, RSTART + RLENGTH)
+    k = substr(tag, 1, 1); v = substr(tag, 2)
+    if (k == "F")      fg = (v == "-") ? "" : v
+    else if (k == "B") bg = (v == "-") ? "" : v
+    else if (k == "T") font = (v == "-") ? "" : v
+    else if (k == "O") { n = int((v + 3) / 7); while (n-- > 0) out = out " " }
+  }
+  run(line)
+  print out
+  fflush()
+}'

@@ -1,0 +1,35 @@
+#!/bin/sh
+# powermenu (rhine): suspend / logout / reboot / shutdown. As Deep Candle's powermenu, but
+# for Artix with rhine: loginctl (elogind) in place of systemctl, and logout ends rhine.
+#   powermenu           pick one in rofi (the bar's power button, Super+X)
+#   powermenu ACTION    suspend, logout, reboot or shutdown (the desktop menu)
+# Suspend happens at once (it loses nothing); logout, reboot and shutdown ask first.
+# No lock screen: you log in once on tty1, and a suspend wakes straight to the desktop.
+confirm() {  # yes only if "yes" is picked
+  [ "$(printf 'no\nyes' | rofi -dmenu -i -no-custom -format i -p "$1" -theme ~/.config/rofi/warm.rasi \
+         -m "$("$HOME/.local/bin/screen-main")" -theme-str 'window {width: 50ch;} listview {lines: 2;}')" = 1 ]
+}
+act() {
+  case $1 in
+    suspend)  exec loginctl suspend ;;
+    logout)   confirm "log out? every window closes" || exit 0
+              exec rhinectl rhine exit ;;   # rhine ends, river with it: back at the tty1 login
+    reboot)   confirm "reboot? every window closes" && exec loginctl reboot; exit 0 ;;
+    shutdown) confirm "shut down? every window closes" && exec loginctl poweroff; exit 0 ;;
+    *)        echo "usage: powermenu [suspend|logout|reboot|shutdown]" >&2; exit 1 ;;
+  esac
+}
+
+[ $# -gt 0 ] && act "$1"
+
+row() { printf '%s  %s\n' "$(printf "$1")" "$2"; }
+choice=$( { row '\357\206\206' suspend; row '\357\202\213' logout
+            row '\357\200\241' reboot; row '\357\200\221' shutdown; } \
+  | rofi -dmenu -p power -i -format i -theme ~/.config/rofi/warm.rasi -m "$("$HOME/.local/bin/screen-main")" \
+         -theme-str 'window {width: 28ch;}')
+case "$choice" in
+  0) act suspend ;;
+  1) act logout ;;
+  2) act reboot ;;
+  3) act shutdown ;;
+esac

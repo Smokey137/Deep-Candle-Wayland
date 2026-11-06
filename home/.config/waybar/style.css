@@ -1,0 +1,83 @@
+/* waybar: the Deep Candle bar's look, from polybar-mine (colors.ini, config.ini).
+   Each group in config.jsonc is one pill: polybar drew the round ends with two glyphs,
+   here they are rounded corners.
+     BACKGROUND #0D0809   the bar            PILL #26171F       the pills
+     FOREGROUND #DCC8AE   text               ALTFOREGROUND #8A7470   dim text
+     ACCENT #C50ED2       the workspace you are on (with ALTWHITE #FFF2E6 on it)
+     YELLOW #F7B922       the date and time  BLUE #9B59D0       icons      RED #F24732   alarms */
+
+* {
+    font-family: monospace, "Iosevka Nerd Font", "DejaVu Sans Mono";
+    font-size: 13px;
+    min-height: 0;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    text-shadow: none;
+}
+
+window#waybar {
+    background-color: #0D0809;
+    color: #DCC8AE;
+}
+
+tooltip {
+    background-color: #140C10;
+    border: 1px solid #453937;
+    border-radius: 8px;
+}
+tooltip label { color: #DCC8AE; }
+
+/* the pills */
+#desktops, #system, #time, #music, #controls, #power {
+    background-color: #26171F;
+    border-radius: 9px;
+    margin: 3px 4px;
+    padding: 0 6px;
+}
+
+/* every piece inside a pill */
+#cpu, #temperature, #custom-ram, #custom-disk, #custom-netspeed,
+#clock, #custom-planet, #custom-weather, #custom-notes,
+#custom-music,
+#custom-volume, #custom-mic, #backlight, #custom-network, #battery,
+#custom-power {
+    padding: 0 6px;
+    color: #DCC8AE;
+}
+
+#temperature.critical { color: #F24732; }
+
+/* the date and time: gold and bold, as polybar's label-font 2 */
+#clock {
+    color: #F7B922;
+    font-weight: bold;
+}
+
+/* workspaces: the one you are on in amethyst, the others plain */
+#workspaces { padding: 0; }
+#workspaces button {
+    padding: 0 6px;
+    margin: 0;
+    color: #DCC8AE;
+    background: transparent;
+    border-radius: 9px;
+}
+#workspaces button:hover {
+    background: #3A2430;
+    color: #FFF2E6;
+}
+#workspaces button.active {
+    background-color: #C50ED2;
+    color: #FFF2E6;
+}
+#workspaces button.empty  { color: #8A7470; }
+#workspaces button.urgent {
+    background-color: #F24732;
+    color: #0D0809;
+}
+
+#tray {
+    padding: 0 4px;
+}
+#tray > .needs-attention { background-color: #F24732; }

@@ -1,0 +1,22 @@
+#!/bin/sh
+# bar (rhine): start the Deep Candle bar, waybar, with ~/.config/waybar/; run again, a fresh one.
+# Deep Candle's polybar one is for bspwm and Openbox; this one takes its place.
+# rhine starts it (config.rh, startup), and so can Super+Shift+R, the weather (a new time
+# zone) and you. Its errors: $XDG_RUNTIME_DIR/waybar.log
+# The clock, and everything opened from the bar, on the time of the weather's city ("weather zone")
+eval "$("$HOME/.local/bin/weather" zone 2>/dev/null)"
+LOG="${XDG_RUNTIME_DIR:-/tmp}/waybar.log"
+
+if pgrep -x waybar >/dev/null; then
+  pkill -x waybar
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    pgrep -x waybar >/dev/null || break
+    sleep 0.2
+  done
+  pkill -KILL -x waybar 2>/dev/null
+fi
+
+# the backlight the bar's scripts and the brightness keys use (as the polybar one finds it)
+for p in /sys/class/backlight/*; do [ -e "$p" ] && { BACKLIGHT=${p##*/}; export BACKLIGHT; break; }; done
+
+setsid -f waybar >"$LOG" 2>&1 </dev/null

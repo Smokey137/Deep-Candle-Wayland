@@ -1,0 +1,25 @@
+# Programs Deep Candle Wayland needs, on top of Deep Candle's own list (its packages.txt,
+# section [pacman]: kitty, rofi, dunst, mpd, the sound, the fonts ...). Arch and Artix use the
+# same names. rhine itself is not packaged: README, "Install".
+#   sudo pacman -S --needed $(grep -v -e '^#' -e '^$' packages.txt)
+# One name per line; a comment goes on its own line.
+
+# the compositor; rhine (its window manager) is built with zig and git
+river
+zig
+git
+# the bar, the wallpaper
+waybar
+swaybg
+# screenshots and the colour picker (swappy and imagemagick are in Deep Candle's list)
+grim
+slurp
+wl-clipboard
+# X apps on Wayland, Qt apps native on Wayland
+xorg-xwayland
+qt5-wayland
+qt6-wayland
+# the session: zsh (~/.zprofile), D-Bus (dbus-run-session), admin rights for apps
+zsh
+dbus
+polkit

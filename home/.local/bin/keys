@@ -1,0 +1,26 @@
+#!/bin/sh
+# keys (rhine): every key of ~/.config/river/config.rh in plain words, searchable (Super+/).
+# The words are the "#:" line over each key there; a key without one shows what it runs.
+# Enter or Escape closes it: it only shows, it runs nothing.
+CFG="${XDG_CONFIG_HOME:-$HOME/.config}/river/config.rh"
+awk '
+  /^[[:space:]]*keybinds[[:space:]]*\[/ { on = 1; next }
+  on && /^[[:space:]]*\]/                { on = 0; next }
+  !on                                    { next }
+  /^[[:space:]]*#:/  { sub(/^[[:space:]]*#:[[:space:]]*/, ""); words = $0; next }
+  /^[[:space:]]*(#|$)/ { next }
+  {
+    n = split($0, f, ",")
+    mods = f[1]; key = f[2]
+    gsub(/[[:space:]]/, "", mods); gsub(/[[:space:]]/, "", key)
+    combo = (mods == "none") ? key : mods "+" key
+    gsub(/super/, "Super", combo); gsub(/shift/, "Shift", combo)
+    gsub(/ctrl/, "Ctrl", combo); gsub(/alt/, "Alt", combo)
+    if (words == "") { words = $0; sub(/^[^,]*,[^,]*,[[:space:]]*/, "", words) }
+    printf "%-26s %s\n", combo, words
+    words = ""
+  }' "$CFG" |
+  rofi -dmenu -i -no-custom -p keys -theme "$HOME/.config/rofi/warm.rasi" \
+       -m "$("$HOME/.local/bin/screen-main")" \
+       -theme-str 'window { width: 760px; } listview { lines: 16; }' >/dev/null
+exit 0

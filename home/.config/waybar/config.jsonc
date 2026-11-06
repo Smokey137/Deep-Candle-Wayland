@@ -1,0 +1,163 @@
+// waybar: the Deep Candle bar on Wayland, ported from polybar-mine (config.ini, modules.ini) on
+// 2026-11-06. The same pieces in the same places; each group is one pill (style.css).
+// The script modules run the same scripts polybar runs, through ~/.local/bin/bar-markup, which
+// turns polybar's colour tags into waybar's. ~/.local/bin/bar starts this bar (again).
+// Colours: style.css, from polybar-mine/colors.ini. Icons: polybar's own (Iosevka Nerd Font).
+{
+  "layer": "top",
+  "position": "top",
+  "height": 24,
+  "spacing": 0,
+
+  "modules-left":   ["group/desktops", "group/system"],
+  "modules-center": ["group/time"],
+  "modules-right":  ["group/music", "group/controls", "tray", "group/power"],
+
+  "group/desktops": { "orientation": "horizontal", "modules": ["hyprland/workspaces"] },
+  "group/system":   { "orientation": "horizontal", "modules": ["cpu", "temperature", "custom/ram", "custom/disk", "custom/netspeed"] },
+  "group/time":     { "orientation": "horizontal", "modules": ["clock#date", "clock#time", "custom/planet", "custom/weather", "custom/notes"] },
+  "group/music":    { "orientation": "horizontal", "modules": ["custom/music"] },
+  "group/controls": { "orientation": "horizontal", "modules": ["custom/volume", "custom/mic", "backlight", "custom/network", "battery"] },
+  "group/power":    { "orientation": "horizontal", "modules": ["custom/power"] },
+
+  // rhine's workspaces: "id" is rhine's number + 1, so Super+1's workspace shows as 1
+  "hyprland/workspaces": {
+    "format": "{id}",
+    "sort-by": "id",
+    "on-click": "activate"
+  },
+
+  "cpu": {
+    "interval": 2,
+    "format": "<span font_family='Iosevka Nerd Font' size='12288' foreground='#9B59D0'></span>  {usage}%",
+    "tooltip": false
+  },
+  "temperature": {
+    "interval": 3,
+    "critical-threshold": 80,
+    "format": "<span font_family='Iosevka Nerd Font' size='12288' foreground='#9B59D0'></span> {temperatureC}°C",
+    "format-critical": "<span font_family='Iosevka Nerd Font' size='12288' foreground='#F24732'></span> <span foreground='#F24732'>{temperatureC}°C</span>",
+    "tooltip": false
+  },
+  "custom/ram": {
+    "exec": "~/.local/bin/ram",
+    "interval": 3,
+    "format": "<span font_family='Iosevka Nerd Font' size='12288' foreground='#9B59D0'></span>  {}",
+    "tooltip": false
+  },
+  "custom/disk": {
+    "exec": "~/.local/bin/disk",
+    "interval": 60,
+    "format": "<span font_family='Iosevka Nerd Font' size='12288' foreground='#9B59D0'></span>  {}",
+    "tooltip": false
+  },
+  // download / upload; a click: numbers or arrows only
+  "custom/netspeed": {
+    "exec": "~/.local/bin/netspeed | ~/.local/bin/bar-markup",
+    "on-click": "~/.local/bin/netspeed toggle",
+    "tooltip": false
+  },
+
+  // polybar's date module was one piece with two clicks; here it's two: the date and the time.
+  // Left click: the calendar; right click on the time: the hours
+  "clock#date": {
+    "interval": 60,
+    "format": "{:%a %d %b}",
+    "on-click": "~/.local/bin/calendar",
+    "on-click-right": "~/.local/bin/calendar",
+    "tooltip": false
+  },
+  "clock#time": {
+    "interval": 1,
+    "format": "{:%H:%M}",
+    "on-click": "~/.local/bin/calendar",
+    "on-click-right": "~/.local/bin/hours",
+    "tooltip": false
+  },
+  "custom/planet": {
+    "exec": "~/.local/bin/hours bar | ~/.local/bin/bar-markup",
+    "on-click": "~/.local/bin/hours",
+    "on-click-right": "~/.local/bin/hours",
+    "tooltip": false
+  },
+  "custom/weather": {
+    "exec": "~/.local/bin/weather bar | ~/.local/bin/bar-markup",
+    "on-click": "~/.local/bin/weather forecast",
+    "on-click-right": "~/.local/bin/weather update",
+    "tooltip": false
+  },
+  // the notes window is an X program (not ported): a click adds a line instead
+  "custom/notes": {
+    "format": "<span font_family='Iosevka Nerd Font' size='12288' foreground='#9B59D0'></span>",
+    "on-click": "~/.local/bin/notes add",
+    "on-click-right": "~/.local/bin/notes add",
+    "tooltip": false
+  },
+
+  // the music card is an X program (not ported): a click plays or pauses, the wheel skips
+  "custom/music": {
+    "exec": "~/.local/bin/music | ~/.local/bin/bar-markup",
+    "on-click": "~/.local/bin/music toggle",
+    "on-scroll-up": "~/.local/bin/music prev",
+    "on-scroll-down": "~/.local/bin/music next",
+    "tooltip": false
+  },
+
+  "custom/volume": {
+    "exec": "~/.local/bin/volume bar | ~/.local/bin/bar-markup",
+    "on-click": "~/.local/bin/volume mute",
+    "on-click-right": "~/.local/bin/sound",
+    "on-scroll-up": "~/.local/bin/volume up",
+    "on-scroll-down": "~/.local/bin/volume down",
+    "tooltip": false
+  },
+  "custom/mic": {
+    "exec": "~/.local/bin/mic | ~/.local/bin/bar-markup",
+    "on-click": "~/.local/bin/volume mic",
+    "on-click-right": "~/.local/bin/sound in",
+    "on-scroll-up": "~/.local/bin/volume mic-up",
+    "on-scroll-down": "~/.local/bin/volume mic-down",
+    "tooltip": false
+  },
+  "backlight": {
+    "format": "<span font_family='Iosevka Nerd Font' size='12288' foreground='#9B59D0'>󰖨</span>  {percent}%",
+    "on-scroll-up": "~/.local/bin/brightness up",
+    "on-scroll-down": "~/.local/bin/brightness down",
+    "tooltip": false
+  },
+  // the cable, else the Wi-Fi's name, else offline; a click: the Wi-Fi and VPN menu
+  // (both need NetworkManager, as on Archcraft)
+  "custom/network": {
+    "exec": "~/.local/bin/netbar | ~/.local/bin/bar-markup",
+    "on-click": "~/.local/bin/network",
+    "tooltip": false
+  },
+  "battery": {
+    "interval": 5,
+    "full-at": 98,
+    "states": { "low": 15 },
+    "format": "{icon}{capacity}%",
+    "format-charging": "{icon}<span foreground='#B8BB26'>{capacity}%</span>",
+    "format-full": "{icon}<span foreground='#8A7470'>{capacity}%</span>",
+    "format-low": "{icon}<span foreground='#F24732'>{capacity}%</span>",
+    "format-icons": [
+      "<span font_family='Iosevka Nerd Font' size='12288' foreground='#9B59D0'>  </span>",
+      "<span font_family='Iosevka Nerd Font' size='12288' foreground='#9B59D0'>  </span>",
+      "<span font_family='Iosevka Nerd Font' size='12288' foreground='#9B59D0'>  </span>",
+      "<span font_family='Iosevka Nerd Font' size='12288' foreground='#9B59D0'>  </span>",
+      "<span font_family='Iosevka Nerd Font' size='12288' foreground='#9B59D0'>  </span>"
+    ],
+    "tooltip": false
+  },
+
+  "tray": {
+    "icon-size": 16,
+    "spacing": 2
+  },
+
+  "custom/power": {
+    "format": "<span font_family='Iosevka Nerd Font' size='12288' foreground='#9B59D0'>⏻</span>",
+    "on-click": "~/.local/bin/powermenu",
+    "tooltip": false
+  }
+}

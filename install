@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# install: put Deep Candle Wayland onto this computer, over Deep Candle.
+#
+#   ./install             copy home/ to ~ (a file it changes is kept first as <file>.bak-YYYYMMDD)
+#   ./install --dry-run   only show what would change
+#
+# Deep Candle itself comes first (github.com/Smokey137/Deep-Candle, "./install bspwm" there):
+# the theme, the fonts, rofi, dunst, kitty and the bar's scripts. This repo then puts the
+# Wayland parts over it: river + rhine instead of X + bspwm, waybar instead of polybar, and the
+# few scripts that need a Wayland version. It does not install programs (packages.txt).
+set -euo pipefail
+repo=$(cd "$(dirname "$0")" && pwd)
+cd "$repo"
+dry=0
+for a; do
+  case $a in
+    --dry-run) dry=1 ;;
+    *) echo "usage: ./install [--dry-run]" >&2; exit 1 ;;
+  esac
+done
+stamp=$(date +%Y%m%d)
+changed=0
+
+# Deep Candle there? (its rofi theme and the bar's colours: this repo uses both)
+for f in .config/rofi/warm.rasi .config/polybar-mine/colors.ini .local/bin/palette; do
+  if [ ! -e "$HOME/$f" ]; then
+    echo "~/$f is missing: install Deep Candle first (its ./install bspwm), then this." >&2
+    [ "$dry" = 1 ] || exit 1
+  fi
+done
+
+put() {   # put SOURCE DEST: copy, with @HOME@ made into this home folder
+  local src=$1 dest=$2 tmp
+  tmp=$(mktemp)
+  if grep -qF '@HOME@' "$src" 2>/dev/null; then
+    sed "s|@HOME@|$HOME|g" "$src" > "$tmp"; chmod --reference="$src" "$tmp"
+  else
+    cp -p "$src" "$tmp"
+  fi
+  if [ -e "$dest" ] && cmp -s "$tmp" "$dest"; then rm -f "$tmp"; return; fi
+  changed=$((changed + 1))
+  if [ "$dry" = 1 ]; then
+    if [ -e "$dest" ]; then echo "  would change: ${dest/#$HOME/\~}"; else echo "  would add:    ${dest/#$HOME/\~}"; fi
+    rm -f "$tmp"; return
+  fi
+  mkdir -p "$(dirname "$dest")"
+  [ -e "$dest" ] && cp -p "$dest" "$dest.bak-$stamp"
+  mv "$tmp" "$dest"
+  echo "  ${dest/#$HOME/\~}"
+}
+
+echo "== Deep Candle Wayland (home/ -> ~)"
+while IFS= read -r -d '' f; do put "$f" "$HOME/${f#home/}"; done < <(find home -type f -print0 | sort -z)
+
+if [ "$dry" = 1 ]; then echo; echo "$changed file(s) would change. Nothing was changed."; exit 0; fi
+cat <<EOF
+
+Done ($changed file(s) changed; old ones kept as *.bak-$stamp).
+
+Once, if not done yet:
+  zsh      chsh -s /bin/zsh        (~/.zprofile starts the session; it is zsh's file)
+  rhine    built and in /usr/local/bin (README: "Install")
+Then log out, and log in on tty1: rhine-session starts river with rhine.
+EOF
