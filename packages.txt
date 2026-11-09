@@ -1,18 +1,16 @@
-# What Deep Candle Wayland needs: the window manager, the bar, the launcher, the wallpaper, and
-# what their scripts run. No apps. Arch and Artix use the same names. rhine is not packaged:
-# README, "Install".
+# What Deep Candle Hyprland needs: the window manager, the bar, the launcher, the wallpaper, and
+# what their scripts run. No apps. Arch names; Artix has the same (its own Hyprland build: README,
+# "Install").
 #   sudo pacman -S --needed $(awk '/^\[/{s=$0;next} /^[a-z]/ && s=="[pacman]"' packages.txt)
 # [optional] is NOT installed by that line: add a piece only if you want what it gives.
 # One name per line; a comment on its own line.
 
 [pacman]
-# the window manager: river (the compositor; it brings Xwayland), git and zig to build rhine,
-# D-Bus for the session (dbus-run-session), polkit for the seat
-river
-git
-zig
+# the window manager: Hyprland 0.57 or later (hyprland.lua; start-hyprland and hyprctl come with
+# it), Xwayland for X apps, D-Bus for the session (dbus-run-session, where there is no systemd)
+hyprland
+xorg-xwayland
 dbus
-polkit
 # the bar, the launcher and its menus, the wallpaper
 waybar
 fuzzel
@@ -20,20 +18,32 @@ swaybg
 # the planets' glyphs on the bar (the bar's own fonts are in fonts/)
 ttf-dejavu
 # the bar's sound pieces and the volume keys: PipeWire, its session manager, its PulseAudio
-# side, and pactl (libpulse). ~/.local/bin/sound-server starts them (no systemd here)
+# side, and pactl (libpulse). Without systemd, ~/.local/bin/sound-server starts them
 pipewire
 pipewire-pulse
 wireplumber
 libpulse
-# the bar's weather (curl); window screenshots (jq)
+# the bar's weather (curl); the screenshot menu's "window" (jq)
 curl
 jq
-# the screenshot and colour-picker keys
+# the screenshot keys
 grim
 slurp
 wl-clipboard
+# the quick guide (Super+R) pages with it
+less
 
 [optional]
+# a terminal: Super+Enter, the drop-down one, the quick guide. kitty is Deep Candle's; foot is
+# used when kitty isn't there; any other: TERMINAL=name (~/.local/bin/term)
+kitty
+# logout that asks the apps to close first (without it they are ended at once)
+hyprshutdown
+# file pickers and screen sharing for apps (the desktop portal)
+xdg-desktop-portal-hyprland
+# Qt apps as Wayland windows
+qt5-wayland
+qt6-wayland
 # the bar's music piece and the media keys, for browsers, mpv and the like (MPRIS)
 playerctl
 # the bar's network piece and its Wi-Fi menu (nmcli). Without it that piece says offline.

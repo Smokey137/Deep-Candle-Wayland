@@ -1,9 +1,0 @@
-#!/bin/sh
-# ob-colorpicker (rhine / Wayland): pick a colour off the screen (Super+P): slurp picks the
-# point, grim reads that one pixel (as PPM: its last 3 bytes are red, green, blue), wl-copy
-# puts #RRGGBB on the clipboard. A notice says it, when a notification daemon is there.
-pt=$(slurp -p -b 00000000) || exit 0
-color=$(grim -g "$pt" -t ppm - | tail -c 3 | od -An -tx1 | tr -d ' \n' | tr 'a-f' 'A-F')
-[ ${#color} = 6 ] || exit 1
-printf '#%s' "$color" | wl-copy
-"$(dirname "$0")/osd" colour colour Colour "#$color, copied to clipboard."

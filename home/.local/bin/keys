@@ -1,24 +1,30 @@
 #!/bin/sh
-# keys (rhine): every key of ~/.config/river/config.rh in plain words, searchable (Super+/).
-# The words are the "#:" line over each key there; a key without one shows what it runs.
-# Enter or Escape closes it: it only shows, it runs nothing.
-CFG="${XDG_CONFIG_HOME:-$HOME/.config}/river/config.rh"
-awk '
-  /^[[:space:]]*keybinds[[:space:]]*\[/ { on = 1; next }
-  on && /^[[:space:]]*\]/                { on = 0; next }
-  !on                                    { next }
-  /^[[:space:]]*#:/  { sub(/^[[:space:]]*#:[[:space:]]*/, ""); words = $0; next }
-  /^[[:space:]]*(#|$)/ { next }
-  {
-    n = split($0, f, ",")
-    mods = f[1]; key = f[2]
-    gsub(/[[:space:]]/, "", mods); gsub(/[[:space:]]/, "", key)
-    combo = (mods == "none") ? key : mods "+" key
-    gsub(/super/, "Super", combo); gsub(/shift/, "Shift", combo)
-    gsub(/ctrl/, "Ctrl", combo); gsub(/alt/, "Alt", combo)
-    if (words == "") { words = $0; sub(/^[^,]*,[^,]*,[[:space:]]*/, "", words) }
-    printf "%-26s %s\n", combo, words
-    words = ""
-  }' "$CFG" |
-  fuzzel --dmenu --no-sort --width 76 --lines 16 --prompt 'keys ' >/dev/null
+# keys: every key of ~/.config/hypr/hyprland.lua in plain words, searchable (Super+/).
+#   keys           the list in fuzzel; Enter or Escape closes it: it only shows, it runs nothing
+#   keys --guide   the list as the quick guide's "ALL KEYS" part (~/.local/bin/guide, Super+R)
+# The list is written by hyprland.lua itself each time Hyprland reads it (the words are each
+# key's second part there), to $XDG_RUNTIME_DIR/deep-candle-keys: "## part" or "keys<TAB>words".
+LIST="${XDG_RUNTIME_DIR:-/tmp}/deep-candle-keys"
+[ -r "$LIST" ] || { echo "keys: no $LIST (Hyprland writes it when it reads hyprland.lua)" >&2; exit 1; }
+
+# pad(s, n): s and spaces (or dots) up to n letters. Letters, not bytes: an arrow is 3 bytes.
+table() {
+  LC_ALL=C awk -F'\t' -v width="$1" -v fill="$2" '
+    function pad(s, n,   t, len) {
+      t = s; len = length(s) - gsub(/[\200-\277]/, "", t)
+      s = s " "
+      for (len++; len < n; len++) s = s fill
+      return s
+    }
+    /^## / { printf "%s── %s\n", lead, substr($0, 4); lead = "\n"; next }
+    NF >= 2 { printf "%s %s\n", pad($1, width), $2 }' "$LIST"
+}
+
+if [ "${1:-}" = --guide ]; then
+  table 24 . | sed 's/^./  &/'
+  exit 0
+fi
+
+table 24 ' ' | grep -v '^$' |
+  fuzzel --dmenu --no-sort --width 92 --lines 18 --prompt 'keys ' >/dev/null
 exit 0

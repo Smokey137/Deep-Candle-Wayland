@@ -1,0 +1,36 @@
+#!/bin/sh
+# winmenu ADDRESS FLOATING FULLSCREEN PINNED: what to do with a window, in fuzzel (Alt+Space).
+# hyprland.lua starts it with the focused window: its address (0x...), and how it is now:
+# FLOATING 0 / 1, FULLSCREEN 0 (no) / 1 (maximized) / 2 (fullscreen), PINNED 0 / 1.
+# No key floats a window (as in Deep Candle since 2026-11-09): this menu does.
+#   send to desktop    the window goes to desktop 1-9; you stay
+#   floating           on / off: free on top of the others, or sharing the screen with them
+#   fullscreen         on / off (Super+Space)
+#   maximize           on / off: the whole desktop, bar and gaps kept (Super+Num 5)
+#   on every desktop   on / off; only a floating window can be, so it is made to float first
+#   close
+addr=${1:-} floating=${2:-0} full=${3:-0} pinned=${4:-0}
+case $addr in 0x*) ;; *) echo "usage: winmenu ADDRESS FLOATING FULLSCREEN PINNED" >&2; exit 1 ;; esac
+win="window = \"address:$addr\""
+hypr() { hyprctl dispatch "$1" >/dev/null; }
+row() { if [ "$1" = 1 ]; then printf '● %s\n' "$2"; else printf '  %s\n' "$2"; fi; }
+
+choice=$( { printf '  send to desktop  ›\n'
+            row "$floating" floating
+            row "$((full == 2))" fullscreen
+            row "$((full == 1))" maximize
+            row "$pinned" 'on every desktop'
+            printf '  close\n'; } |
+  fuzzel --dmenu --index --lines 6 --width 28 --prompt 'window ') || exit 0
+
+case $choice in
+  0) n=$(printf '%s\n' 1 2 3 4 5 6 7 8 9 |
+         fuzzel --dmenu --lines 9 --width 20 --prompt 'send to desktop ') || exit 0
+     case $n in [1-9]) hypr "hl.dsp.window.move({ $win, workspace = $n, follow = false })" ;; esac ;;
+  1) hypr "hl.dsp.window.float({ $win })" ;;
+  2) hypr "hl.dsp.window.fullscreen({ $win })" ;;
+  3) hypr "hl.dsp.window.fullscreen({ $win, mode = \"maximized\" })" ;;
+  4) [ "$floating" = 1 ] || hypr "hl.dsp.window.float({ $win, action = \"on\" })"
+     hypr "hl.dsp.window.pin({ $win })" ;;
+  5) hypr "hl.dsp.window.close({ $win })" ;;
+esac

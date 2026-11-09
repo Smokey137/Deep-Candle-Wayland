@@ -1,0 +1,24 @@
+#!/bin/sh
+# hyprland-session: the Deep Candle session on Wayland, from tty1 (~/.zprofile or
+# ~/.bash_profile runs it). What ~/.xinitrc did for X: a D-Bus session bus when there is none
+# yet (no systemd: Artix), then Hyprland. When Hyprland ends (power menu -> logout), this script
+# ends, and you are back at "login:".
+# What Hyprland says goes to ~/.local/share/hyprland/session.log, new at each login. Its own
+# longer log: $XDG_RUNTIME_DIR/hypr/*/hyprland.log.
+# The settings, and the environment the session's programs get: ~/.config/hypr/hyprland.lua.
+
+export XDG_SESSION_TYPE=wayland
+export PATH="$HOME/.local/bin:$PATH"
+
+# start-hyprland comes with Hyprland: it starts Hyprland and watches over it
+start='start-hyprland'
+command -v "$start" >/dev/null 2>&1 || start=Hyprland
+
+mkdir -p "$HOME/.local/share/hyprland"
+log="$HOME/.local/share/hyprland/session.log"
+
+# systemd gives every login a D-Bus session bus; without systemd there is none: make one
+if [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
+  exec "$start" </dev/null >"$log" 2>&1
+fi
+exec dbus-run-session "$start" </dev/null >"$log" 2>&1

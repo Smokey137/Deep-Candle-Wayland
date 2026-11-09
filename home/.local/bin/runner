@@ -1,3 +1,0 @@
-#!/bin/sh
-# runner: run a command (Super+R): the launcher, with every program in PATH listed too.
-exec fuzzel --list-executables-in-path --prompt 'run '

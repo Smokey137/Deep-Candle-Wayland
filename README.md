@@ -1,102 +1,130 @@
-# Deep Candle Wayland
+# Deep Candle Hyprland
 
-The desktop part of [Deep Candle](https://github.com/Smokey137/Deep-Candle), on Wayland.
-Four things, nothing else:
+The desktop part of [Deep Candle](https://github.com/Smokey137/Deep-Candle), on Wayland with
+Hyprland. Four things, nothing else:
 
 ```
- Deep Candle (X)                 here (Wayland)
- ───────────────                 ──────────────
- bspwm + sxhkd           ──▶     rhine on river      the window manager and its keys
- polybar                 ──▶     waybar              the bar: same pieces, same colours
- rofi                    ──▶     fuzzel              the launcher and the menus
- feh + the picture       ──▶     swaybg + the picture
+ Deep Candle (X)                    here (Wayland)
+ ───────────────                    ──────────────
+ bspwm + sxhkd + its scripts ──▶    Hyprland     the window manager and its keys: one file
+ polybar                     ──▶    waybar       the bar: same pieces, same colours
+ rofi                        ──▶    fuzzel       the launcher and the menus
+ feh + the picture           ──▶    swaybg + the picture
 ```
 
 No apps and no app settings: no terminal config, no shell, no GTK or Qt theme, no
-notifications. Your apps keep their own settings. Super+Return opens `$TERMINAL` (foot, unless
-you set another).
+notifications. Your apps keep their own settings. The keys start the same apps as in Deep
+Candle (Brave, Geany, PCManFM-Qt ...); a key for an app you don't have does nothing.
 
-Made on 6 Nov 2026 from Deep Candle of that day, for rhine 0.5.0, river 0.5.0 and fuzzel
-1.12, on Artix (runit). Not yet used as a daily desktop: read "Not ported" first.
+Made on 9 Nov 2026 from Deep Candle of that day, for Hyprland 0.57 (the newest then: 0.57.2).
+It took the place of this repo's river + rhine version.
+
+**Not yet run on a real Hyprland.** It was written from Hyprland's own manual and source, and
+its settings file was run against a stand-in for Hyprland that knows Hyprland's real names. That
+finds typing mistakes. It cannot show how the real thing behaves. Read "Not tried yet" before
+the first login.
 
 ## What's in it
 
 ```
- home/        -> ~                          rhine, the bar, the launcher, their scripts
+ home/        -> ~                          Hyprland's settings, the bar, the launcher, their scripts
  fonts/       -> ~/.local/share/fonts/      the bar's: Mass Driver IO (text), Iosevka Nerd Font (icons)
  wallpaper/   -> ~/Pictures/Wallpapers/     and ~/.wallpaper points to it
 ```
 
 | part | files under `home/` |
 |---|---|
-| start | `.zprofile` (zsh) or `.bash_profile` (bash): on tty1, `.local/bin/rhine-session` |
-| window manager | `.config/river/config.rh`: borders, rules, keys, mouse, what starts |
+| start | `.zprofile` (zsh) or `.bash_profile` (bash): on tty1, `.local/bin/hyprland-session` |
+| window manager | `.config/hypr/hyprland.lua`: the look, rules, keys, mouse, what starts. `.config/hypr/readme.txt`: the quick guide's page |
 | bar | `.config/waybar/config.jsonc`, `style.css`; `.local/bin/bar`, `bar-markup`; the scripts of its pieces (`ram`, `disk`, `netspeed`, `hours`, `planhour`, `weather`, `music`, `volume`, `mic`, `netbar`); `.config/polybar-mine/colors.ini`, the palette they read (`palette`) |
-| launcher, menus | `.config/fuzzel/fuzzel.ini`; `.local/bin/launcher`, `runner`, `powermenu`, `sound`, `network`, `keys` |
-| what the keys run | `.local/bin/screenshot`, `ob-colorpicker`, `brightness`, `volume`, `music`, `osd` |
-| sound | `.local/bin/sound-server`: starts PipeWire, wireplumber and pipewire-pulse (Artix has no systemd to do it) |
+| launcher, menus | `.config/fuzzel/fuzzel.ini`; `.local/bin/launcher`, `powermenu`, `winmenu`, `sound`, `network`, `keys` |
+| what the keys run | `.local/bin/term`, `guide`, `screenshot`, `brightness`, `volume`, `music`, `osd` |
+| sound | `.local/bin/sound-server`: starts PipeWire where there is no systemd to do it (Artix) |
 
-Mass Driver is a paid font: it must not go public with this repo.
+Mass Driver is a paid font, and the wallpaper is not ours to share: neither may be public.
 
-## Install (on a fresh Artix)
+## Install (Arch or Artix)
 
-1. Programs: `packages.txt`, section `[pacman]`. `[optional]` lists extras (Wi-Fi menu,
-   notices, mpd); none is needed to start.
-2. Build rhine (it is not packaged). As yourself, not root:
-   ```
-   git clone https://codeberg.org/Sivecano/rhine.git
-   cd rhine
-   git checkout "$(git describe --tags --abbrev=0)"
-   zig build -Ddbus=false -fno-sys=river-protocols -Doptimize=ReleaseSafe
-   sudo cp -r zig-out/. /usr/local/
-   ```
-   The newest release tag, not `main`: `main` changes the config words now and then.
-3. This repo: `cd ~/Deep-Candle-Wayland && ./install`. Every file it changes is kept first as
+1. Programs: `packages.txt`, section `[pacman]`. `[optional]` lists extras (a terminal, Wi-Fi
+   menu, notices ...); none is needed to start, but with no terminal Super+Enter does nothing.
+2. Hyprland must be **0.57 or later**: `pacman -Q hyprland`. Older than 0.55 cannot read
+   `hyprland.lua` at all.
+3. This repo: `cd ~/Deep-Candle-Hyprland && ./install`. Every file it changes is kept first as
    `<file>.bak-YYYYMMDD`; `--dry-run` shows what would change.
 4. Once, for the brightness keys: `sudo usermod -aG video $USER`.
 5. Log out, log in on tty1.
+
+In a virtual machine Hyprland needs 3D: virt-manager: Video Virtio with 3D on, Display Spice
+with OpenGL on. Hyprland's manual: without it, it will not work.
 
 ## How the session starts
 
 ```
  tty1 "login:"
    ▼
- your shell reads ~/.zprofile or ~/.bash_profile ── on tty1 ──▶ ~/.local/bin/rhine-session
+ your shell reads ~/.zprofile or ~/.bash_profile ── on tty1 ──▶ ~/.local/bin/hyprland-session
    ▼
- rhine-session: the Wayland environment, TERMINAL, then
-   dbus-run-session river -c rhine        → ~/.local/share/river/session.log
+ hyprland-session: a D-Bus session bus if there is none (Artix), then
+   start-hyprland                         → ~/.local/share/hyprland/session.log
    ▼
- rhine reads ~/.config/river/config.rh, then starts: sound-server (PipeWire), swaybg (the
-   wallpaper), the bar
+ Hyprland reads ~/.config/hypr/hyprland.lua, then starts: sound-server (PipeWire, where
+   systemd doesn't), swaybg (the wallpaper), the bar
 ```
 
-`river` is the compositor (by Isaac Freund); `rhine` is the window manager on it (by
-Sivecano, codeberg.org/Sivecano/rhine). Log out (power menu, or Ctrl+Alt+Delete): rhine ends,
-river ends, you are back at `login:`.
+Hyprland is by Vaxry (github.com/hyprwm/Hyprland). It is the compositor and the window manager
+in one program; `hyprctl` talks to it from a terminal. Log out (power menu, or
+Ctrl+Alt+Delete): Hyprland ends, and you are back at `login:`.
+
+## One file
+
+`~/.config/hypr/hyprland.lua` is everything bspwm's `bspwmrc`, `sxhkdrc` and `scripts/` were.
+It is a Lua program, read from top to bottom:
+
+```
+ environment → screens → the look → mouse → tiling → rules → what the keys do → the keys
+                                                                    → what starts
+```
+
+Hyprland reads it again each time you save it. A mistake in it: a red box on the screen names
+the line.
 
 ## Keys
 
-`~/.config/river/config.rh`, block `keybinds`. Super+/ lists them all. rhine reads the file
-again every time you save it. Most are bspwm's; what is different:
+Super+/ lists them all. Super+R opens the quick guide. They are Deep Candle's keys of
+2026-11-09; these differ:
 
-| key | bspwm | rhine |
+| key | bspwm | Hyprland |
 |---|---|---|
-| Super+Space | the desktop menu | the launcher (fuzzel) |
-| Super+Return, Ctrl+Alt+T | kitty | `$TERMINAL` |
-| Super+Shift+R | restart bspwm | a fresh bar (rhine needs no restart) |
-| Alt+Tab | a list, most recent first | the next window on this workspace |
-| Super+Tab | the window used last | the workspace used before |
-| Ctrl+Alt+←/→ | next / previous desktop | next / previous workspace that has windows |
-| Super+Ctrl+arrows | move the edge between windows | resize the window (its right / bottom edge) |
-| Super+Alt+arrows | nudge a floating window | the same; a tiled one swaps places |
-| Alt+F6 | maximize | fullscreen |
-| Alt+F11 | always on top | a floating window stays above the others |
-| Super+Shift+Q | force-close | ask the app to end (SIGTERM) |
-| Super+= / Super+- | add / remove a desktop | not needed: workspaces come and go by themselves |
-| app keys (Super+F, W, E, Ctrl+Alt+V, R, H, M ...) | apps | gone: add yours in config.rh |
+| Super+T, Super+Shift+T | puts the windows in a master layout once | the desktop **stays** in the master layout: a new window joins the column. The same key again: plain tiling |
+| Super+M | this window becomes the master; the old one goes first in the column | this window and the master swap places |
+| Super+B | all windows the same size | the two halves of this split the same size (master layout: 60 / 40 again) |
+| Super+Ctrl+R | rotate this split | the same (master layout: master left ⇄ top) |
+| Alt+Tab | a list while Alt is held, most recent first | the next window on this desktop |
+| Super+Num 5 | monocle | maximize: the whole desktop, gaps and bar kept |
+| Super+Shift+Enter | a kitty kept hidden | a terminal on a desktop of its own, shown over the one you are on |
+| Super+Enter | kitty | `$TERMINAL` if you set it, else kitty, else foot (`~/.local/bin/term`) |
+| Super+Shift+R | restart bspwm | read the settings again, a fresh bar |
+| Ctrl+Alt+Space | the apps menu | the launcher |
+| Super+N, Super+V | notes, clipboard history | no key: not ported |
+| tap Super | the launcher (ksuperkey) | the launcher (Hyprland's own) |
 
-Workspaces: rhine counts from 0, the keys and the bar from 1 (waybar shows rhine's "id", the
-number + 1). Empty workspaces you are not on disappear.
+Desktops: Hyprland makes a desktop when you go to it and drops it when it is empty and you
+leave. So the bar shows the desktops with windows and the one you are on, as in Deep Candle.
+
+Apps with their own desktop, as in Deep Candle:
+
+```
+ 1 2 3 4 5 6 7 8 9
+ │ │ │ │     │ │ └ YouTube, Spotify   Super+Y, Super+S
+ │ │ │ │     │ └ Discord              Super+D
+ │ │ │ │     └ Dino                   Super+I
+ │ │ │ └ Claude                       Super+C
+ │ │ └ calibre (the library)          Super+L
+ └─┴ Brave                            Super+W   (the first window on 1, a second one on 2)
+```
+
+The key goes to the app. Pressed again: the app's next window. Not open: the app starts, on its
+desktop, and you go with it.
 
 ## The bar
 
@@ -123,32 +151,61 @@ fuzzel (by Daniel Eklöf, codeberg.org/dnkl/fuzzel), in Deep Candle's colours
 
 | what | key / click | script |
 |---|---|---|
-| apps | Super+Space, Alt+F1 | `launcher` |
-| run a command (apps and everything in PATH) | Super+R | `runner` |
-| power: suspend, logout, reboot, shutdown | Super+X, the bar's ⏻ | `powermenu` (loginctl, elogind) |
+| apps | tap Super, Alt+F1, Ctrl+Alt+Space | `launcher` |
+| this window: float, fullscreen, maximize, on every desktop, send to a desktop, close | Alt+Space | `winmenu` |
+| power: suspend, logout, reboot, shutdown | Super+X, the bar's ⏻ | `powermenu` (loginctl: systemd's or elogind's) |
 | sound output / input | right click on the bar's speaker / mic | `sound` (pactl) |
 | Wi-Fi | click on the bar's network piece | `network` (needs NetworkManager: optional) |
 | the key list | Super+/ | `keys` |
-| screenshot | Super+S, Print keys | `screenshot` (grim, slurp; swappy if there) |
+| screenshot | PrtSc, Ctrl+PrtSc, Super+PrtSc | `screenshot` (grim, slurp; swappy if there) |
+
+No key floats a window (as in Deep Candle): the window menu does.
 
 ## Not ported
 
 They need X, bspwm or rofi's panels, or they are apps:
 
-- the desktop menu, the window menu and list, super-peek, alt-tab's list
+- the desktop's clicks: the main menu (right click), the list of all windows (middle click),
+  Alt+wheel for the next desktop
+- super-peek (hold Super), Alt+Tab's list
 - the calendar, the hours and the forecast popups (text panels)
-- clip (clipboard history), night (night light), notes, the music card, the wallpaper picker
-- a second screen (screens, srandrd): `kanshi` does it on Wayland
-- border-colour, key chains (Super+Alt+M / R), ksuperkey's Super tap
-- hide, shade, border on / off, sticky, always below, "same sizes", corner and numpad snaps:
-  rhine has no such commands yet
+- clip (clipboard history), night (night light), notes, the music card, the wallpaper picker,
+  the colour picker
+- a second screen with desktop 6 on it: one `hl.monitor` and one `hl.workspace_rule` line with
+  that screen's name do it (`hyprctl monitors` names it)
+- from the window menu: always on top / on bottom, hide, border on / off
+- border-colour (the border's colours are two lines in `hyprland.lua`, under "Look")
+- picom's see-through apps: an app's look is not part of this repo
+
+## Not tried yet
+
+Nothing here has run on a real Hyprland. These are the places most likely to be wrong, in the
+order to look at them:
+
+1. **It starts at all.** On Artix (runit, no systemd) Hyprland needs a seat: elogind or seatd
+   running. Not checked: whether Artix's own Hyprland is 0.57 yet.
+2. **The classes of the apps with their own desktop.** `hyprctl clients` shows each window's
+   class. Brave's web apps are told apart by `brave-<id>-Default`, which Brave gives only as a
+   Wayland window. Under Xwayland they all say `Brave-browser`, and Super+Y / S / D / C would
+   start a new one each time. Dino and calibre: `im.dino.Dino` or `dino`, `calibre-gui`. A
+   different class: change it in `hyprland.lua`, at `APPS`.
+3. **Tap Super.** If the launcher also opens after Super+Q and the like, delete the two
+   `Super_L` / `Super_R` lines.
+4. **Super+T, Super+M.** They change a desktop's layout while Hyprland runs. If nothing
+   happens, say so.
+5. **The numpad keys** are bound by key number (`code:83` ...). `wev` shows a key's number.
+6. **The keyboard layout** is Hyprland's default, `us`. Another: `kb_layout` in `hyprland.lua`,
+   under "Mouse and keyboard".
 
 ## When it goes wrong
 
 | check | command |
 |---|---|
-| river's and rhine's errors | `tail -n 40 ~/.local/share/river/session.log` |
+| mistakes in `hyprland.lua` | a red box on the screen; `hyprctl configerrors` |
+| what Hyprland said at start | `tail -n 40 ~/.local/share/hyprland/session.log` |
+| Hyprland's own log | `hyprctl rollinglog`, or `$XDG_RUNTIME_DIR/hypr/*/hyprland.log` |
 | the bar's errors | `cat $XDG_RUNTIME_DIR/waybar.log` |
-| black screen in a VM | 3D on (virt-manager: Video Virtio + 3D, Display Spice + OpenGL), or start it with `WLR_RENDERER=pixman` |
-| a key does nothing | the log names a line it could not read; `rhinectl rhine <command>` tries one by hand |
-| the bar has no workspaces | waybar must be started by rhine (login, or Super+Shift+R): only rhine's children know its socket |
+| black screen in a VM | 3D on (virt-manager: Video Virtio + 3D, Display Spice + OpenGL) |
+| a key does nothing | `hyprctl binds` lists what is bound; `wev` shows what a key is called |
+| a window's class | `hyprctl clients` |
+| no keys at all | Ctrl+Alt+F2: a text login. Repair `~/.config/hypr/hyprland.lua` there, or put back `hyprland.lua.bak-DATE` |

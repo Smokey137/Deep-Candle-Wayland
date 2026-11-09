@@ -1,8 +1,8 @@
 #!/bin/sh
-# bar (rhine): start the Deep Candle bar, waybar, with ~/.config/waybar/; run again, a fresh one.
+# bar: start the Deep Candle bar, waybar, with ~/.config/waybar/; run again, a fresh one.
 # Deep Candle's polybar one is for bspwm and Openbox; this one takes its place.
-# rhine starts it (config.rh, startup), and so can Super+Shift+R, the weather (a new time
-# zone) and you. Its errors: $XDG_RUNTIME_DIR/waybar.log
+# Hyprland starts it (hyprland.lua, at its end), and so can Super+Shift+R, the weather (a new
+# time zone) and you. Its errors: $XDG_RUNTIME_DIR/waybar.log
 # The clock, and everything opened from the bar, on the time of the weather's city ("weather zone")
 eval "$("$HOME/.local/bin/weather" zone 2>/dev/null)"
 LOG="${XDG_RUNTIME_DIR:-/tmp}/waybar.log"

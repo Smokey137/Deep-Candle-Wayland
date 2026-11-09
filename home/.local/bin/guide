@@ -1,0 +1,15 @@
+#!/bin/sh
+# guide: the quick guide to this desktop (Super+R), in a small terminal window: the page
+# ~/.config/hypr/readme.txt, and at its end ALL KEYS, made from hyprland.lua's own list each
+# time (~/.local/bin/keys --guide), so it is never out of date.
+# q closes it, the arrows or the wheel scroll; Super+R again closes it too (hyprland.lua).
+# Lines starting with ■ are headings: drawn in Deep Candle gold (#F7B922), bold; "──" lines
+# (the parts of the key list) in Deep Candle's muted #8A7470, bold.
+here=$(dirname "$0")
+page="${XDG_CONFIG_HOME:-$HOME/.config}/hypr/readme.txt"
+exec "$here/term" -c readme sh -c '
+  esc=$(printf "\033")
+  { cat "$1"; printf "\n■ ALL KEYS\n"; "$2" --guide; } |
+    sed -e "s/^■.*/${esc}[1;38;2;247;185;34m&${esc}[0m/" \
+        -e "s/^  ── .*/${esc}[1;38;2;138;116;112m&${esc}[0m/" |
+    less -R -~ -P " q close · arrows or wheel scroll "' sh "$page" "$here/keys"

@@ -1,0 +1,28 @@
+#!/bin/sh
+# term [-c CLASS] [COMMAND [ARGUMENT ...]]: a terminal window.
+#   term                    Super+Enter
+#   term -c dropdown        the drop-down terminal (Super+Shift+Enter)
+#   term -c music ncmpcpp   a program in it
+# Which terminal: $TERMINAL if you set it, else kitty (Deep Candle's), else foot.
+# -c CLASS: the window's class (its app id), which the rules in ~/.config/hypr/hyprland.lua go
+# by. kitty and most others call it --class, foot calls it --app-id.
+T=${TERMINAL:-kitty}
+command -v "$T" >/dev/null 2>&1 || T=foot
+command -v "$T" >/dev/null 2>&1 || {
+  "$(dirname "$0")/osd" term terminal Terminal "no terminal found: install kitty or foot, or set TERMINAL"
+  exit 1
+}
+
+class=
+if [ "${1:-}" = -c ]; then
+  class=${2:-}
+  shift 2
+fi
+[ $# -gt 0 ] && set -- -e "$@"
+if [ -n "$class" ]; then
+  case ${T##*/} in
+    foot|footclient) set -- "--app-id=$class" "$@" ;;
+    *)               set -- --class "$class" "$@" ;;
+  esac
+fi
+exec "$T" "$@"

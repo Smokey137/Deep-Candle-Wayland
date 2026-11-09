@@ -21,7 +21,7 @@
   "group/controls": { "orientation": "horizontal", "modules": ["custom/volume", "custom/mic", "backlight", "custom/network", "battery"] },
   "group/power":    { "orientation": "horizontal", "modules": ["custom/power"] },
 
-  // rhine's workspaces: "id" is rhine's number + 1, so Super+1's workspace shows as 1
+  // the desktops (Hyprland's workspaces): only the ones with windows, and the one you are on
   "hyprland/workspaces": {
     "format": "{id}",
     "sort-by": "id",

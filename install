@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# install: put Deep Candle Wayland onto this computer.
+# install: put Deep Candle Hyprland onto this computer.
 #
 #   ./install             everything below; a file it changes is kept first as <file>.bak-YYYYMMDD
 #   ./install --dry-run   only show what would change
 #
-#   home/        -> ~                                   rhine, the bar, the launcher, their scripts
+#   home/        -> ~                                   Hyprland's settings, the bar, the launcher, their scripts
 #   fonts/       -> ~/.local/share/fonts/deep-candle/   (fonts/mass-driver/ -> .../mass-driver/)
 #   wallpaper/   -> ~/Pictures/Wallpapers/              and ~/.wallpaper points to it
 # It does not install programs (packages.txt) and never uses sudo: what needs it, it prints.
@@ -64,7 +64,13 @@ cat <<EOF
 Done ($changed file(s) changed; old ones kept as *.bak-$stamp).
 
 By hand, once:
-  rhine    built and in /usr/local/bin (README: "Install")
   video    brightness keys: sudo usermod -aG video ${USER:-$(id -un)}
-Then log out, and log in on tty1: rhine-session starts river with rhine.
+Then log out, and log in on tty1: hyprland-session starts Hyprland.
 EOF
+
+# left from this repo's river + rhine days: nothing uses them now. Named, never removed here.
+old=
+for f in "$HOME/.config/river" "$HOME/.local/bin/rhine-session" "$HOME/.local/bin/runner" "$HOME/.local/bin/ob-colorpicker"; do
+  [ -e "$f" ] && old="$old ${f/#$HOME/\~}"
+done
+[ -z "$old" ] || printf '\nFrom the river version, no longer used (yours to delete):%s\n' "$old"

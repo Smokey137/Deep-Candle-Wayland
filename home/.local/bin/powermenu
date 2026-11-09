@@ -1,16 +1,19 @@
 #!/bin/sh
-# powermenu (rhine): suspend / logout / reboot / shutdown, in fuzzel.
+# powermenu: suspend / logout / reboot / shutdown, in fuzzel.
 #   powermenu           pick one (the bar's power button, Super+X)
 #   powermenu ACTION    suspend, logout, reboot or shutdown (Ctrl+Alt+Delete: logout)
 # Suspend happens at once (it loses nothing); logout, reboot and shutdown ask first.
-# Artix: loginctl (elogind) in place of systemctl; logout ends rhine, and river with it.
+# loginctl does the first and the last two: systemd's, or elogind's (Artix). Logout ends
+# Hyprland: with hyprshutdown when it is installed (it asks the apps to close first), else at once.
 confirm() {  # yes only if "yes" is picked
   [ "$(printf 'no\nyes\n' | fuzzel --dmenu --index --lines 2 --width 40 --prompt "$1 ")" = 1 ]
 }
 act() {
   case $1 in
     suspend)  exec loginctl suspend ;;
-    logout)   confirm "log out? every window closes" && exec rhinectl rhine exit; exit 0 ;;
+    logout)   confirm "log out? every window closes" || exit 0
+              command -v hyprshutdown >/dev/null 2>&1 && exec hyprshutdown
+              exec hyprctl dispatch 'hl.dsp.exit()' ;;
     reboot)   confirm "reboot? every window closes" && exec loginctl reboot; exit 0 ;;
     shutdown) confirm "shut down? every window closes" && exec loginctl poweroff; exit 0 ;;
     *)        echo "usage: powermenu [suspend|logout|reboot|shutdown]" >&2; exit 1 ;;
